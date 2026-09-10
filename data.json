@@ -1,5 +1,13 @@
 {
-  "teams": [],
+  "teams": [
+    {
+      "id": "c0d7a303-9426-4e05-9bfe-497afa57cb1a",
+      "memberName": "hari",
+      "teamName": "john",
+      "score": 0,
+      "joinedAt": "2026-09-10T09:26:42.691Z"
+    }
+  ],
   "questions": [],
   "admin": {
     "username": "admin",
@@ -38,6 +46,9 @@
   },
   "state": {
     "currentQuestion": null,
-    "questionStartedAt": null
+    "questionStartedAt": null,
+    "buzzedTeamId": "c0d7a303-9426-4e05-9bfe-497afa57cb1a",
+    "buzzedAt": "2026-09-10T09:26:44.155Z",
+    "buzzerLocked": true
   }
 }

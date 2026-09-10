@@ -11,6 +11,8 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+let clients = [];
+
 function ensureDataFile() {
   if (!fs.existsSync(DATA_FILE)) {
     const defaultData = {
@@ -20,29 +22,14 @@ function ensureDataFile() {
         username: 'admin',
         password: 'admin123',
       },
-      competition: {
-        currentRound: 1,
-        currentQuestionIndex: 0,
-        timerSeconds: 0,
-        timerRunning: false,
-        timerStartedAt: null,
-        timerRemaining: 0,
-        questionStatus: 'idle',
-        stage: 'setup',
-        showLeaderboard: false,
-        winner: null,
-        runnerUp: null,
-        secondRunnerUp: null,
-      },
-      rounds: {
-        1: { activeTeams: [], qualifiers: [], completed: false },
-        2: { activeTeams: [], qualifiers: [], completed: false },
-        3: { activeTeams: [], qualifiers: [], completed: false },
-      },
       state: {
-        currentQuestion: null,
-        questionStartedAt: null,
-      },
+        buzzerLocked: true,
+        buzzedTeamId: null,
+        buzzedAt: null,
+        currentQuestionId: null,
+        currentSlideIndex: 0,
+        flashEvent: null,
+      }
     };
     fs.writeFileSync(DATA_FILE, JSON.stringify(defaultData, null, 2));
   }
@@ -50,27 +37,48 @@ function ensureDataFile() {
 
 function loadData() {
   ensureDataFile();
-  return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+  try {
+    return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+  } catch (err) {
+    // If file is corrupted or old format crashes, fallback to default structure
+    fs.unlinkSync(DATA_FILE);
+    ensureDataFile();
+    return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+  }
 }
 
 function saveData(data) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  broadcastState(data);
 }
 
-function randomCode() {
-  return crypto
-    .randomBytes(3)
-    .toString('hex')
-    .slice(0, 5)
-    .toUpperCase();
+function broadcastState(data) {
+  const payload = JSON.stringify({
+    teams: data.teams,
+    state: data.state,
+    questions: data.questions
+  });
+  clients.forEach(client => {
+    client.res.write(`data: ${payload}\n\n`);
+  });
 }
 
-function deepClone(obj) {
-  return JSON.parse(JSON.stringify(obj));
-}
+// SSE Event Stream
+app.get('/api/events', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
 
-app.get('/api/health', (req, res) => {
-  res.json({ ok: true });
+  const clientId = Date.now();
+  const newClient = { id: clientId, res };
+  clients.push(newClient);
+
+  const data = loadData();
+  res.write(`data: ${JSON.stringify({ teams: data.teams, state: data.state, questions: data.questions })}\n\n`);
+
+  req.on('close', () => {
+    clients = clients.filter(client => client.id !== clientId);
+  });
 });
 
 app.post('/api/admin/login', (req, res) => {
@@ -82,42 +90,17 @@ app.post('/api/admin/login', (req, res) => {
   return res.status(401).json({ ok: false, message: 'Invalid admin credentials' });
 });
 
-app.get('/api/data', (req, res) => {
+app.post('/api/teams/join', (req, res) => {
   const data = loadData();
-  res.json(data);
-});
-
-app.post('/api/data/backup', (req, res) => {
-  const data = loadData();
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const backupPath = path.join(__dirname, `backup-${timestamp}.json`);
-  fs.writeFileSync(backupPath, JSON.stringify(data, null, 2));
-  res.json({ ok: true, backupPath });
-});
-
-app.post('/api/teams', (req, res) => {
-  const data = loadData();
+  const { memberName, teamName } = req.body;
+  if (!memberName || !teamName) return res.status(400).json({ ok: false, message: 'Missing fields' });
+  
   const team = {
     id: crypto.randomUUID(),
-    teamNumber: req.body.teamNumber || data.teams.length + 1,
-    teamName: req.body.teamName || `Team ${data.teams.length + 1}`,
-    code: req.body.code || randomCode(),
-    status: 'waiting',
-    connected: false,
+    memberName,
+    teamName,
     score: 0,
-    submitted: false,
-    manualAdjustments: [],
-    currentQuestionIndex: 0,
-    solvedGroups: [],
-    selectedCards: [],
-    qualified: false,
-    eliminated: false,
-    roundAccess: {
-      1: true,
-      2: false,
-      3: false,
-    },
-    joinedAt: new Date().toISOString(),
+    joinedAt: new Date().toISOString()
   };
 
   data.teams.push(team);
@@ -125,210 +108,95 @@ app.post('/api/teams', (req, res) => {
   res.json({ ok: true, team });
 });
 
-app.put('/api/teams/:id', (req, res) => {
+app.post('/api/buzz', (req, res) => {
   const data = loadData();
-  const team = data.teams.find((t) => t.id === req.params.id);
-  if (!team) return res.status(404).json({ ok: false });
-  Object.assign(team, req.body);
+  const { teamId } = req.body;
+  
+  if (data.state.buzzerLocked) {
+    return res.status(400).json({ ok: false, message: 'Buzzer is locked' });
+  }
+  
+  if (data.state.buzzedTeamId) {
+    return res.status(400).json({ ok: false, message: 'Someone already buzzed' });
+  }
+
+  const team = data.teams.find(t => t.id === teamId);
+  if (!team) return res.status(404).json({ ok: false, message: 'Team not found' });
+
+  data.state.buzzedTeamId = teamId;
+  data.state.buzzedAt = new Date().toISOString();
+  // We lock the buzzer immediately when someone buzzes to prevent ties
+  data.state.buzzerLocked = true; 
   saveData(data);
-  res.json({ ok: true, team });
+  res.json({ ok: true });
+});
+
+app.post('/api/admin/state', (req, res) => {
+  const data = loadData();
+  const newState = req.body;
+  data.state = { ...data.state, ...newState, flashEvent: null };
+  saveData(data);
+  res.json({ ok: true });
+});
+
+app.post('/api/admin/flash', (req, res) => {
+  const data = loadData();
+  const { type } = req.body; // 'green' or 'red'
+  data.state.flashEvent = { type, timestamp: Date.now() };
+  saveData(data);
+  res.json({ ok: true });
+});
+
+app.post('/api/admin/score', (req, res) => {
+  const data = loadData();
+  const { teamId, amount } = req.body;
+  const team = data.teams.find(t => t.id === teamId);
+  if (team) {
+    team.score += amount;
+    saveData(data);
+  }
+  res.json({ ok: true });
 });
 
 app.delete('/api/teams/:id', (req, res) => {
   const data = loadData();
-  data.teams = data.teams.filter((t) => t.id !== req.params.id);
+  data.teams = data.teams.filter(t => t.id !== req.params.id);
   saveData(data);
   res.json({ ok: true });
-});
-
-app.post('/api/teams/:code/join', (req, res) => {
-  const data = loadData();
-  const team = data.teams.find((t) => t.code.toUpperCase() === req.params.code.toUpperCase());
-  if (!team) return res.status(404).json({ ok: false, message: 'Invalid team code' });
-
-  team.connected = true;
-  team.status = 'waiting';
-  team.lastConnectedAt = new Date().toISOString();
-  saveData(data);
-
-  res.json({ ok: true, team });
-});
-
-app.post('/api/teams/:id/score', (req, res) => {
-  const data = loadData();
-  const team = data.teams.find((t) => t.id === req.params.id);
-  if (!team) return res.status(404).json({ ok: false });
-
-  const adjustment = Number(req.body.adjustment || 0);
-  team.score = Math.max(0, Number(team.score || 0) + adjustment);
-  team.manualAdjustments.push({
-    type: adjustment >= 0 ? 'add' : 'subtract',
-    amount: Math.abs(adjustment),
-    createdAt: new Date().toISOString(),
-  });
-
-  saveData(data);
-  res.json({ ok: true, team });
-});
-
-app.post('/api/teams/:id/reset-score', (req, res) => {
-  const data = loadData();
-  const team = data.teams.find((t) => t.id === req.params.id);
-  if (!team) return res.status(404).json({ ok: false });
-
-  team.score = 0;
-  team.manualAdjustments.push({
-    type: 'reset',
-    createdAt: new Date().toISOString(),
-  });
-  saveData(data);
-  res.json({ ok: true, team });
 });
 
 app.post('/api/questions', (req, res) => {
   const data = loadData();
+  const { title, slides } = req.body; // slides: [{ type: 'text'|'image'|'sound', content: '...' }]
   const question = {
-    id: req.body.id || crypto.randomUUID(),
-    round: req.body.round || 1,
-    difficulty: req.body.difficulty || 'Standard',
-    timeLimit: Number(req.body.timeLimit || 180),
-    items: Array.isArray(req.body.items) ? req.body.items : [],
-    groups: Array.isArray(req.body.groups) ? req.body.groups : [],
-    title: req.body.title || `Question ${data.questions.length + 1}`,
+    id: crypto.randomUUID(),
+    title,
+    slides: slides || []
   };
-
-  if (req.body.editingId) {
-    data.questions = data.questions.map((q) => (q.id === req.body.editingId ? question : q));
-  } else {
-    data.questions.push(question);
-  }
-
+  data.questions.push(question);
   saveData(data);
   res.json({ ok: true, question });
 });
 
-app.get('/api/questions', (req, res) => {
-  const data = loadData();
-  res.json(data.questions);
-});
-
-app.get('/api/questions/:id', (req, res) => {
-  const data = loadData();
-  const q = data.questions.find((item) => item.id === req.params.id);
-  if (!q) return res.status(404).json({ ok: false });
-  res.json(q);
-});
-
-app.get('/api/display', (req, res) => {
-  const data = loadData();
-  const displayData = {
-    competition: data.competition,
-    currentQuestion: data.state.currentQuestion,
-    teams: data.teams,
+app.post('/api/reset-data', (req, res) => {
+  const defaultData = {
+    teams: [],
+    questions: [],
+    admin: {
+      username: 'admin',
+      password: 'admin123',
+    },
+    state: {
+      buzzerLocked: true,
+      buzzedTeamId: null,
+      buzzedAt: null,
+      currentQuestionId: null,
+      currentSlideIndex: 0,
+      flashEvent: null,
+    }
   };
-  res.json(displayData);
-});
-
-app.post('/api/competition/state', (req, res) => {
-  const data = loadData();
-  data.competition = { ...data.competition, ...req.body };
-  saveData(data);
-  res.json({ ok: true, competition: data.competition });
-});
-
-app.post('/api/competition/current-question', (req, res) => {
-  const data = loadData();
-  data.state.currentQuestion = req.body.question;
-  data.competition.currentQuestionIndex = req.body.index || 0;
-  saveData(data);
-  res.json({ ok: true, currentQuestion: data.state.currentQuestion });
-});
-
-app.post('/api/teams/:id/update-state', (req, res) => {
-  const data = loadData();
-  const team = data.teams.find((t) => t.id === req.params.id);
-  if (!team) return res.status(404).json({ ok: false });
-
-  team.status = req.body.status || team.status;
-  team.connected = true;
-  if (req.body.score !== undefined) team.score = req.body.score;
-  if (req.body.solvedGroups) team.solvedGroups = req.body.solvedGroups;
-  saveData(data);
-  res.json({ ok: true, team });
-});
-
-app.post('/api/teams/:id/disconnect', (req, res) => {
-  const data = loadData();
-  const team = data.teams.find((t) => t.id === req.params.id);
-  if (!team) return res.status(404).json({ ok: false });
-
-  team.connected = false;
-  team.status = 'disconnected';
-  saveData(data);
-  res.json({ ok: true, team });
-});
-
-app.post('/api/advance-round', (req, res) => {
-  const data = loadData();
-  const round = Number(req.body.round || 1);
-  const selectedIds = Array.isArray(req.body.selectedIds) ? req.body.selectedIds : [];
-
-  if (round === 1) {
-    data.rounds[1].qualifiers = selectedIds;
-    data.rounds[2].activeTeams = data.teams.filter((team) => selectedIds.includes(team.id));
-    data.rounds[2].activeTeams.forEach((team) => {
-      team.roundAccess[2] = true;
-      team.qualified = true;
-    });
-  }
-
-  if (round === 2) {
-    data.rounds[2].qualifiers = selectedIds;
-    data.rounds[3].activeTeams = data.teams.filter((team) => selectedIds.includes(team.id));
-    data.rounds[3].activeTeams.forEach((team) => {
-      team.roundAccess[3] = true;
-      team.qualified = true;
-    });
-  }
-
-  if (round === 3) {
-    data.competition.winner = req.body.winner || null;
-    data.competition.runnerUp = req.body.runnerUp || null;
-    data.competition.secondRunnerUp = req.body.secondRunnerUp || null;
-  }
-
-  saveData(data);
-  res.json({ ok: true });
-});
-
-app.post('/api/reset', (req, res) => {
-  const data = loadData();
-  data.teams = [];
-  data.questions = [];
-  data.competition = {
-    currentRound: 1,
-    currentQuestionIndex: 0,
-    timerSeconds: 0,
-    timerRunning: false,
-    timerStartedAt: null,
-    timerRemaining: 0,
-    questionStatus: 'idle',
-    stage: 'setup',
-    showLeaderboard: false,
-    winner: null,
-    runnerUp: null,
-    secondRunnerUp: null,
-  };
-  data.rounds = {
-    1: { activeTeams: [], qualifiers: [], completed: false },
-    2: { activeTeams: [], qualifiers: [], completed: false },
-    3: { activeTeams: [], qualifiers: [], completed: false },
-  };
-  data.state = {
-    currentQuestion: null,
-    questionStartedAt: null,
-  };
-  saveData(data);
+  fs.writeFileSync(DATA_FILE, JSON.stringify(defaultData, null, 2));
+  broadcastState(defaultData);
   res.json({ ok: true });
 });
 
@@ -337,5 +205,5 @@ app.get('*', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Connections Competition app running on http://localhost:${PORT}`);
+  console.log(`Live Quiz app running on http://localhost:${PORT}`);
 });
