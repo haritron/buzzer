@@ -1,5 +1,6 @@
 const app = document.getElementById('app');
 
+console.log("--- App.js Loaded v2 ---");
 let globalState = {
   teams: [],
   questions: [],
