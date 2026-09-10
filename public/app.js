@@ -471,36 +471,41 @@ function renderAdminDashboard() {
           <!-- Slide Thumbnail Sidebar -->
           <div style="width:200px; background:rgba(0,0,0,0.3); padding:15px; border-right:1px solid rgba(255,255,255,0.1); display:flex; flex-direction:column; gap:10px;">
             <input type="text" id="newCanvasQTitle" placeholder="Question Title" style="width:100%; padding:5px; margin-bottom:10px;">
-            <button class="btn btn-primary" onclick="alert('Creating question...')">Create Question</button>
+            <button class="btn btn-primary" onclick="window.Editor.createQuestion()">Create Question</button>
             <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin:10px 0">
-            <button class="btn btn-secondary" onclick="alert('Adding slide...')">+ New Slide</button>
+            <button class="btn btn-secondary" id="btnNewSlide" onclick="window.Editor.createNewSlide()" disabled>+ New Slide</button>
             <div id="slide-thumbnails" style="display:flex; flex-direction:column; gap:10px; flex:1; overflow-y:auto">
-              <div style="text-align:center; color:var(--text-secondary); padding:20px">No slides yet.</div>
+              <div style="text-align:center; color:var(--text-secondary); padding:20px">No question selected.</div>
             </div>
           </div>
 
           <!-- Canvas Area -->
           <div style="flex:1; padding:20px; display:flex; flex-direction:column;">
             <div style="display:flex; gap:10px; margin-bottom:15px; padding-bottom:15px; border-bottom:1px solid rgba(255,255,255,0.1)">
-              <button class="btn btn-secondary" onclick="alert('Add text')">📄 Text</button>
-              <button class="btn btn-secondary" onclick="alert('Add image')">🖼️ Image</button>
-              <button class="btn btn-secondary" onclick="alert('Add audio')">🎵 Audio</button>
-              <button class="btn btn-success" style="margin-left:auto" onclick="alert('Saving slide...')">💾 Save Slide</button>
+              <button class="btn btn-secondary" onclick="window.Editor.addElement('text')">📄 Text</button>
+              <button class="btn btn-secondary" onclick="window.Editor.addElement('image')">🖼️ Image</button>
+              <button class="btn btn-secondary" onclick="window.Editor.addElement('audio')">🎵 Audio</button>
+              <button class="btn btn-success" style="margin-left:auto" onclick="window.Editor.saveSlide()">💾 Save Slide</button>
             </div>
             
-            <div style="position:relative; width:100%; aspect-ratio:16/9; background:#000; border:2px dashed rgba(255,255,255,0.2); border-radius:8px; overflow:hidden; display:flex; align-items:center; justify-content:center">
+            <div id="presentation-canvas" style="position:relative; width:100%; aspect-ratio:16/9; background:#000; border:2px dashed rgba(255,255,255,0.2); border-radius:8px; overflow:hidden; display:flex; align-items:center; justify-content:center">
               <span style="color:var(--text-secondary)">Canvas Editor (Select a slide to edit)</span>
             </div>
             
-            <div style="margin-top:15px; padding:15px; background:rgba(0,0,0,0.3); border-radius:8px;">
+            <div id="element-properties" style="margin-top:15px; padding:15px; background:rgba(0,0,0,0.3); border-radius:8px; display:none">
               <h4 style="margin:0 0 10px 0; font-size:1rem; color:var(--primary)">Element Properties</h4>
-              <div style="display:flex; gap:15px">
-                <div><label style="font-size:0.8rem; color:var(--text-secondary)">X Pos</label><input type="number" style="width:70px; margin:0"></div>
-                <div><label style="font-size:0.8rem; color:var(--text-secondary)">Y Pos</label><input type="number" style="width:70px; margin:0"></div>
-                <div><label style="font-size:0.8rem; color:var(--text-secondary)">Width</label><input type="number" style="width:70px; margin:0"></div>
-                <div><label style="font-size:0.8rem; color:var(--text-secondary)">Animation</label>
-                  <select style="margin:0"><option>None</option><option>Fade In</option><option>Slide Up</option></select>
+              <div style="display:flex; gap:15px; align-items:center">
+                <div><label style="font-size:0.8rem; color:var(--text-secondary); display:block">Content (Text/URL)</label><input type="text" id="prop-content" style="width:150px; margin:0" oninput="window.Editor.updateSelected()"></div>
+                <div><label style="font-size:0.8rem; color:var(--text-secondary); display:block">X Pos (%)</label><input type="number" id="prop-x" style="width:60px; margin:0" oninput="window.Editor.updateSelected()"></div>
+                <div><label style="font-size:0.8rem; color:var(--text-secondary); display:block">Y Pos (%)</label><input type="number" id="prop-y" style="width:60px; margin:0" oninput="window.Editor.updateSelected()"></div>
+                <div><label style="font-size:0.8rem; color:var(--text-secondary); display:block">Width (%)</label><input type="number" id="prop-w" style="width:60px; margin:0" oninput="window.Editor.updateSelected()"></div>
+                <div><label style="font-size:0.8rem; color:var(--text-secondary); display:block">Color</label><input type="color" id="prop-color" style="margin:0" oninput="window.Editor.updateSelected()"></div>
+                <div><label style="font-size:0.8rem; color:var(--text-secondary); display:block">Animation</label>
+                  <select id="prop-animation" style="margin:0" onchange="window.Editor.updateSelected()">
+                    <option>None</option><option>Fade In</option><option>Slide Up</option>
+                  </select>
                 </div>
+                <button class="btn btn-danger" style="margin-left:auto; margin-top:15px" onclick="window.Editor.deleteSelected()">🗑️</button>
               </div>
             </div>
           </div>
