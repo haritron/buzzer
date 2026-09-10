@@ -1,0 +1,12 @@
+{
+  "name": "connections-competition-app",
+  "version": "1.0.0",
+  "description": "Connections Competition Game with admin, team, and display interfaces",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}

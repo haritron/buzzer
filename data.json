@@ -1,0 +1,43 @@
+{
+  "teams": [],
+  "questions": [],
+  "admin": {
+    "username": "admin",
+    "password": "admin123"
+  },
+  "competition": {
+    "currentRound": 1,
+    "currentQuestionIndex": 0,
+    "timerSeconds": 0,
+    "timerRunning": false,
+    "timerStartedAt": 1789021531761,
+    "timerRemaining": 0,
+    "questionStatus": "ended",
+    "stage": "setup",
+    "showLeaderboard": false,
+    "winner": null,
+    "runnerUp": null,
+    "secondRunnerUp": null
+  },
+  "rounds": {
+    "1": {
+      "activeTeams": [],
+      "qualifiers": [],
+      "completed": false
+    },
+    "2": {
+      "activeTeams": [],
+      "qualifiers": [],
+      "completed": false
+    },
+    "3": {
+      "activeTeams": [],
+      "qualifiers": [],
+      "completed": false
+    }
+  },
+  "state": {
+    "currentQuestion": null,
+    "questionStartedAt": null
+  }
+}

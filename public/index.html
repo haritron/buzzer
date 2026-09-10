@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Connections Competition</title>
+    <style>
+      :root {
+        --bg: #0f172a;
+        --panel: #111827;
+        --panel-2: #1f2937;
+        --accent: #38bdf8;
+        --accent-2: #22c55e;
+        --danger: #ef4444;
+        --warning: #f59e0b;
+        --text: #e5e7eb;
+        --muted: #9ca3af;
+        --border: rgba(255,255,255,0.08);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: linear-gradient(135deg, #0f172a 0%, #111827 100%);
+        color: var(--text);
+      }
+      a { color: var(--accent); text-decoration: none; }
+      button, input, select, textarea { font: inherit; }
+      .app-shell { min-height: 100vh; display: flex; flex-direction: column; }
+      .topbar {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 18px 28px; border-bottom: 1px solid var(--border); background: rgba(15,23,42,0.8);
+        position: sticky; top: 0; backdrop-filter: blur(8px);
+      }
+      .brand { font-size: 1.4rem; font-weight: 700; }
+      .nav { display: flex; gap: 12px; flex-wrap: wrap; }
+      .nav button, .primary-btn, .secondary-btn, .danger-btn {
+        border: none; border-radius: 10px; padding: 10px 14px; cursor: pointer; transition: 0.2s ease;
+      }
+      .nav button, .secondary-btn { background: var(--panel-2); color: var(--text); }
+      .primary-btn { background: var(--accent); color: #04131d; font-weight: 700; }
+      .danger-btn { background: var(--danger); color: white; }
+      .container { width: min(1200px, calc(100% - 32px)); margin: 24px auto; }
+      .layout { display: grid; grid-template-columns: 1.5fr 1fr; gap: 24px; }
+      .panel {
+        background: rgba(17,24,39,0.92); border: 1px solid var(--border); border-radius: 18px; padding: 20px;
+        box-shadow: 0 15px 30px rgba(0,0,0,0.15);
+      }
+      .grid { display: grid; gap: 16px; }
+      .two-col { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px; }
+      .stat { background: rgba(31,41,55,0.85); border-radius: 12px; padding: 16px; border: 1px solid var(--border); }
+      .stat-label { color: var(--muted); font-size: 0.82rem; margin-bottom: 6px; }
+      .stat-value { font-size: 1.5rem; font-weight: 700; }
+      .input, .select, .textarea {
+        width: 100%; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--border); background: rgba(15,23,42,0.7); color: var(--text);
+      }
+      .field { display: grid; gap: 8px; margin-bottom: 12px; }
+      .field label { color: var(--muted); font-size: 0.86rem; }
+      table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+      th, td { padding: 10px; border-bottom: 1px solid var(--border); text-align: left; }
+      th { color: var(--muted); font-weight: 600; }
+      .badge {
+        display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 999px;
+        font-size: 0.76rem; background: rgba(56,189,248,0.12); color: var(--accent); border: 1px solid rgba(56,189,248,0.3);
+      }
+      .badge.success { background: rgba(34,197,94,0.12); color: #86efac; border-color: rgba(34,197,94,0.3); }
+      .badge.warning { background: rgba(245,158,11,0.12); color: #fcd34d; border-color: rgba(245,158,11,0.3); }
+      .badge.danger { background: rgba(239,68,68,0.12); color: #fca5a5; border-color: rgba(239,68,68,0.3); }
+      .team-join { max-width: 420px; margin: 40px auto; background: rgba(17,24,39,0.9); border:1px solid var(--border); border-radius: 22px; padding: 28px; }
+      .question-grid {
+        display: grid; grid-template-columns: repeat(4, minmax(80px, 1fr)); gap: 12px; margin-top: 20px;
+      }
+      .item-card {
+        min-height: 90px; display: flex; align-items: center; justify-content: center; text-align: center;
+        border-radius: 12px; padding: 10px; background: rgba(31,41,55,0.9); border: 1px solid var(--border);
+        cursor: pointer; user-select: none; transition: 0.2s ease; overflow-wrap: anywhere;
+      }
+      .item-card.selected { border-color: var(--accent); background: rgba(56,189,248,0.18); }
+      .item-card.solved { border-color: var(--accent-2); background: rgba(34,197,94,0.18); }
+      .muted { color: var(--muted); }
+      .hidden { display: none !important; }
+      .scroll { max-height: 440px; overflow: auto; }
+      .pill-row { display: flex; gap: 8px; flex-wrap: wrap; }
+      .small { font-size: 0.85rem; }
+      @media (max-width: 900px) {
+        .layout { grid-template-columns: 1fr; }
+        .topbar { flex-direction: column; gap: 16px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">Connections Competition</div>
+        <nav class="nav" id="nav" style="display:none"></nav>
+      </header>
+      <main class="container" id="app"></main>
+    </div>
+
+    <script>
+      const app = document.getElementById('app');
+      const nav = document.getElementById('nav');
+      const state = {
+        currentView: 'login',
+        adminLoggedIn: false,
+        data: null,
+        team: null,
+      };
+
+      function renderNav() {
+        nav.innerHTML = '';
+        if (state.adminLoggedIn) {
+          nav.appendChild(createButton('Admin Dashboard', () => renderAdminDashboard()));
+          nav.appendChild(createButton('Teams', () => renderAdminTeams()));
+          nav.appendChild(createButton('Questions', () => renderAdminQuestions()));
+          nav.appendChild(createButton('Display', () => renderDisplayPage()));
+          nav.appendChild(createButton('Logout', logoutAdmin));
+        } else {
+          nav.appendChild(createButton('Join Team', () => renderJoinPage()));
+          nav.appendChild(createButton('Admin Login', () => renderAdminLogin()));
+        }
+      }
+
+      function createButton(label, onClick) {
+        const button = document.createElement('button');
+        button.textContent = label;
+        button.onclick = onClick;
+        return button;
+      }
+
+      function updateNavVisibility() {
+        nav.style.display = state.adminLoggedIn ? 'flex' : 'flex';
+      }
+
+      async function fetchJson(url, options = {}) {
+        const res = await fetch(url, {
+          headers: { 'Content-Type': 'application/json' },
+          ...options,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Request failed');
+        return data;
+      }
+
+      function setView(view) {
+        state.currentView = view;
+        render();
+      }
+
+      function render() {
+        renderNav();
+        updateNavVisibility();
+        if (state.adminLoggedIn) {
+          if (state.currentView === 'dashboard') return renderAdminDashboard();
+          if (state.currentView === 'teams') return renderAdminTeams();
+          if (state.currentView === 'questions') return renderAdminQuestions();
+          if (state.currentView === 'display') return renderDisplayPage();
+          return renderAdminDashboard();
+        }
+        if (state.team) {
+          return renderTeamScreen();
+        }
+        if (state.currentView === 'admin-login') return renderAdminLogin();
+        return renderJoinPage();
+      }
+
+      async function loadData() {
+        try {
+          const data = await fetchJson('/api/data');
+          state.data = data;
+          return data;
+        } catch (error) {
+          console.error(error);
+        }
+      }
+
+      function renderJoinPage() {
+        app.innerHTML = `
+          <div class="team-join">
+            <h1 style="margin-top:0; text-align:center;">CONNECTIONS GAME</h1>
+            <div class="field">
+              <label for="teamCode">Enter your Team Code</label>
+              <input id="teamCode" class="input" placeholder="e.g. A7K29" />
+            </div>
+            <button class="primary-btn" style="width:100%;" onclick="joinTeam()">JOIN GAME</button>
+            <p class="muted" style="margin-top:16px; text-align:center;">Use the code provided by the admin.</p>
+          </div>
+        `;
+      }
+
+      async function joinTeam() {
+        const code = document.getElementById('teamCode').value.trim();
+        if (!code) return alert('Please enter a team code');
+        try {
+          const result = await fetchJson(`/api/teams/${encodeURIComponent(code)}/join`, { method: 'POST' });
+          state.team = result.team;
+          await loadData();
+          render();
+        } catch (error) {
+          alert(error.message || 'Unable to join');
+        }
+      }
+
+      function renderTeamScreen() {
+        const data = state.data || { teams: [], competition: {}, state: {} };
+        const currentQuestion = data.state.currentQuestion;
+        const team = state.team;
+        const score = team.score || 0;
+        const solvedGroups = team.solvedGroups || [];
+        const items = currentQuestion?.items || [];
+
+        app.innerHTML = `
+          <div class="panel">
+            <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:center;">
+              <div>
+                <div class="muted">Team ${team.teamNumber}</div>
+                <h2 style="margin:6px 0;">${team.teamName}</h2>
+              </div>
+              <div class="badge ${team.status === 'waiting' ? 'warning' : 'success'}">${team.status || 'Waiting for Admin'}</div>
+            </div>
+            <div class="two-col" style="margin-top:18px;">
+              <div class="stat">
+                <div class="stat-label">Current Round</div>
+                <div class="stat-value">${data.competition.currentRound || 1}</div>
+              </div>
+              <div class="stat">
+                <div class="stat-label">Current Question</div>
+                <div class="stat-value">${currentQuestion ? currentQuestion.title || currentQuestion.id : 'Waiting for question'}</div>
+              </div>
+              <div class="stat">
+                <div class="stat-label">Timer</div>
+                <div class="stat-value">${data.competition.timerSeconds || 0}s</div>
+              </div>
+              <div class="stat">
+                <div class="stat-label">Score</div>
+                <div class="stat-value">${score}</div>
+              </div>
+            </div>
+            <div style="margin-top:18px;">
+              <p class="muted">Solved groups: ${solvedGroups.length}/4</p>
+              <div class="pill-row">
+                ${(solvedGroups || []).map((g) => `<span class="badge success">${g.category}</span>`).join('') || '<span class="muted">No groups solved yet.</span>'}
+              </div>
+            </div>
+            <div class="question-grid" style="margin-top:22px;">
+              ${(items || []).map((item, index) => {
+                const selected = (team.selectedCards || []).includes(item.id);
+                const solved = (team.solvedGroups || []).some((g) => g.items.includes(item.id));
+                return `<div class="item-card ${selected ? 'selected' : ''} ${solved ? 'solved' : ''}" data-item-id="${item.id}" onclick="toggleSelection('${item.id}')">
+                  ${item.type === 'image' && item.image ? `<img src="${item.image}" alt="" style="max-width:100%; max-height:80px; object-fit:contain;" />` : item.text || item.label || 'Item'}
+                </div>`;
+              }).join('')}
+            </div>
+            <div style="margin-top:18px; display:flex; gap:12px; flex-wrap:wrap;">
+              <button class="primary-btn" onclick="submitConnection()">CONNECT</button>
+              <button class="secondary-btn" onclick="clearSelection()">CLEAR SELECTION</button>
+            </div>
+          </div>
+        `;
+      }
+
+      async function toggleSelection(itemId) {
+        if (!state.team) return;
+        const team = state.team;
+        const selected = team.selectedCards || [];
+        const next = selected.includes(itemId) ? selected.filter((id) => id !== itemId) : [...selected, itemId];
+        team.selectedCards = next.slice(0, 4);
+        state.team = { ...team, selectedCards: team.selectedCards };
+        renderTeamScreen();
+      }
+
+      function clearSelection() {
+        if (!state.team) return;
+        state.team.selectedCards = [];
+        renderTeamScreen();
+      }
+
+      async function submitConnection() {
+        if (!state.team) return;
+        const currentQuestion = state.data.state.currentQuestion;
+        if (!currentQuestion) return alert('No question is active');
+        const team = state.team;
+        const selected = team.selectedCards || [];
+        if (selected.length !== 4) return alert('Select exactly four items');
+
+        const foundGroup = currentQuestion.groups.find((group) => {
+          const itemIds = group.items.map((it) => it.id);
+          return itemIds.length === 4 && selected.every((id) => itemIds.includes(id)) && itemIds.every((id) => selected.includes(id));
+        });
+
+        if (foundGroup) {
+          const solvedGroups = team.solvedGroups || [];
+          const exists = solvedGroups.some((g) => g.category === foundGroup.category);
+          if (!exists) {
+            team.solvedGroups.push({
+              category: foundGroup.category,
+              items: foundGroup.items.map((it) => it.id)
+            });
+            team.score += 10;
+          }
+          team.selectedCards = [];
+          state.team = team;
+          await fetchJson(`/api/teams/${team.id}/update-state`, {
+            method: 'POST',
+            body: JSON.stringify({
+              status: 'playing',
+              score: team.score,
+              solvedGroups: team.solvedGroups,
+            })
+          });
+          alert(`Correct! ${foundGroup.category}`);
+          await loadData();
+          render();
+          return;
+        }
+
+        alert('Incorrect Connection');
+      }
+
+      function renderAdminLogin() {
+        app.innerHTML = `
+          <div class="panel" style="max-width:460px;margin:40px auto;">
+            <h2>Admin Login</h2>
+            <div class="field">
+              <label>Username</label>
+              <input id="adminUsername" class="input" value="admin" />
+            </div>
+            <div class="field">
+              <label>Password</label>
+              <input id="adminPassword" class="input" type="password" value="admin123" />
+            </div>
+            <button class="primary-btn" style="width:100%;" onclick="loginAdmin()">LOGIN</button>
+          </div>
+        `;
+      }
+
+      async function loginAdmin() {
+        const username = document.getElementById('adminUsername').value;
+        const password = document.getElementById('adminPassword').value;
+        try {
+          await fetchJson('/api/admin/login', {
+            method: 'POST',
+            body: JSON.stringify({ username, password }),
+          });
+          state.adminLoggedIn = true;
+          await loadData();
+          renderAdminDashboard();
+        } catch (error) {
+          alert(error.message || 'Login failed');
+        }
+      }
+
+      function logoutAdmin() {
+        state.adminLoggedIn = false;
+        state.currentView = 'login';
+        render();
+      }
+
+      function renderAdminDashboard() {
+        const data = state.data || { teams: [], competition: {}, state: {}, questions: [] };
+        const activeTeams = data.teams.filter((team) => team.connected).length;
+        const completedTeams = data.teams.filter((team) => team.status === 'completed').length;
+        const teamsPlaying = data.teams.filter((team) => team.status === 'playing').length;
+        const currentQuestion = data.state.currentQuestion;
+
+        app.innerHTML = `
+          <div class="grid">
+            <div class="panel">
+              <h2>Current Competition</h2>
+              <div class="two-col">
+                <div class="stat"><div class="stat-label">Current Round</div><div class="stat-value">${data.competition.currentRound || 1}</div></div>
+                <div class="stat"><div class="stat-label">Current Question</div><div class="stat-value">${currentQuestion ? currentQuestion.title || currentQuestion.id : 'No question assigned'}</div></div>
+                <div class="stat"><div class="stat-label">Active Teams</div><div class="stat-value">${activeTeams}</div></div>
+                <div class="stat"><div class="stat-label">Timer</div><div class="stat-value">${data.competition.timerSeconds || 0}s</div></div>
+                <div class="stat"><div class="stat-label">Question Status</div><div class="stat-value">${data.competition.questionStatus || 'idle'}</div></div>
+                <div class="stat"><div class="stat-label">Teams Completed</div><div class="stat-value">${completedTeams}</div></div>
+              </div>
+              <div style="margin-top:18px; display:flex; gap:10px; flex-wrap:wrap;">
+                <button class="primary-btn" onclick="startRound()">START ROUND</button>
+                <button class="secondary-btn" onclick="startQuestion()">START QUESTION</button>
+                <button class="secondary-btn" onclick="pauseTimer()">PAUSE</button>
+                <button class="secondary-btn" onclick="resumeTimer()">RESUME</button>
+                <button class="secondary-btn" onclick="endQuestion()">END QUESTION</button>
+                <button class="secondary-btn" onclick="nextQuestion()">NEXT QUESTION</button>
+                <button class="secondary-btn" onclick="endRound()">END ROUND</button>
+              </div>
+            </div>
+
+            <div class="panel">
+              <h3>Competition Controls</h3>
+              <div class="field">
+                <label>Round</label>
+                <select id="roundSelect" class="select">
+                  <option value="1">Round 1</option>
+                  <option value="2">Round 2</option>
+                  <option value="3">Round 3</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Question</label>
+                <select id="questionSelect" class="select"></select>
+              </div>
+              <button class="primary-btn" onclick="assignCurrentQuestion()">ASSIGN QUESTION</button>
+              <div style="margin-top:14px;">
+                <button class="secondary-btn" onclick="exportBackup()">BACKUP / EXPORT DATA</button>
+                <button class="secondary-btn" onclick="exportCsv()">EXPORT RESULTS CSV</button>
+                <button class="danger-btn" style="margin-top:8px;" onclick="resetAllData()">RESET ALL</button>
+              </div>
+            </div>
+          </div>
+        `;
+
+        const roundSelect = document.getElementById('roundSelect');
+        const questionSelect = document.getElementById('questionSelect');
+        roundSelect.value = String(data.competition.currentRound || 1);
+        questionSelect.innerHTML = (data.questions || [])
+          .filter((q) => Number(q.round) === Number(roundSelect.value))
+          .map((q) => `<option value="${q.id}">${q.title || q.id}</option>`)
+          .join('');
+      }
+
+      async function startRound() {
+        await updateCompetitionState({ questionStatus: 'round-started', stage: 'playing' });
+        alert('Round started');
+      }
+
+      async function startQuestion() {
+        await updateCompetitionState({ questionStatus: 'running', timerRunning: true, timerStartedAt: Date.now(), timerSeconds: 0 });
+        alert('Question started');
+      }
+
+      async function pauseTimer() {
+        await updateCompetitionState({ questionStatus: 'paused', timerRunning: false });
+      }
+
+      async function resumeTimer() {
+        await updateCompetitionState({ questionStatus: 'running', timerRunning: true, timerStartedAt: Date.now() });
+      }
+
+      async function endQuestion() {
+        await updateCompetitionState({ questionStatus: 'ended', timerRunning: false });
+        alert('Question ended');
+      }
+
+      async function nextQuestion() {
+        const currentIndex = Number(state.data.competition.currentQuestionIndex || 0);
+        const questions = (state.data.questions || []).filter((q) => Number(q.round) === Number(state.data.competition.currentRound || 1));
+        const next = questions[currentIndex + 1];
+        if (next) {
+          await setCurrentQuestion(next, currentIndex + 1);
+        } else {
+          alert('No further questions in this round');
+        }
+      }
+
+      async function endRound() {
+        await updateCompetitionState({ questionStatus: 'round-ended', stage: 'review', timerRunning: false, showLeaderboard: true });
+        alert('Round ended');
+      }
+
+      async function assignCurrentQuestion() {
+        const questionId = document.getElementById('questionSelect').value;
+        const question = (state.data.questions || []).find((q) => q.id === questionId);
+        if (!question) return;
+        const roundIndex = (state.data.questions || []).filter((q) => Number(q.round) === Number(document.getElementById('roundSelect').value)).findIndex((q) => q.id === questionId);
+        await setCurrentQuestion(question, roundIndex);
+      }
+
+      async function setCurrentQuestion(question, index) {
+        await fetchJson('/api/competition/current-question', {
+          method: 'POST',
+          body: JSON.stringify({ question, index }),
+        });
+        await loadData();
+        renderAdminDashboard();
+      }
+
+      async function updateCompetitionState(payload) {
+        await fetchJson('/api/competition/state', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+        await loadData();
+        renderAdminDashboard();
+      }
+
+      async function renderAdminTeams() {
+        const data = state.data || { teams: [] };
+        app.innerHTML = `
+          <div class="panel">
+            <h2>Team Management</h2>
+            <div class="two-col" style="margin-bottom:18px;">
+              <div class="field">
+                <label>Team Number</label>
+                <input id="teamNumber" class="input" value="${(data.teams.length + 1).toString().padStart(2, '0')}" />
+              </div>
+              <div class="field">
+                <label>Team Name</label>
+                <input id="teamName" class="input" placeholder="Team Name" />
+              </div>
+              <div class="field">
+                <label>Team Code</label>
+                <input id="teamCode" class="input" placeholder="optional generated" />
+              </div>
+              <div class="field">
+                <label>Status</label>
+                <select id="teamStatus" class="select">
+                  <option value="waiting">Waiting</option>
+                  <option value="playing">Playing</option>
+                  <option value="completed">Completed</option>
+                  <option value="disconnected">Disconnected</option>
+                </select>
+              </div>
+            </div>
+            <button class="primary-btn" onclick="createTeam()">CREATE TEAM</button>
+            <div class="scroll" style="margin-top:24px;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Team</th>
+                    <th>Name</th>
+                    <th>Code</th>
+                    <th>Status</th>
+                    <th>Connected</th>
+                    <th>Score</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${(data.teams || []).map((team) => `
+                    <tr>
+                      <td>${team.teamNumber}</td>
+                      <td>${team.teamName}</td>
+                      <td>${team.code}</td>
+                      <td><span class="badge ${team.status === 'disconnected' ? 'danger' : team.status === 'completed' ? 'success' : 'warning'}">${team.status || 'waiting'}</span></td>
+                      <td>${team.connected ? 'Yes' : 'No'}</td>
+                      <td>${team.score || 0}</td>
+                      <td>
+                        <button class="secondary-btn small" onclick="editTeam('${team.id}')">Edit</button>
+                        <button class="danger-btn small" onclick="deleteTeam('${team.id}')">Delete</button>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      }
+
+      async function createTeam() {
+        const payload = {
+          teamNumber: document.getElementById('teamNumber').value,
+          teamName: document.getElementById('teamName').value,
+          code: document.getElementById('teamCode').value,
+          status: document.getElementById('teamStatus').value,
+        };
+        if (!payload.teamName) return alert('Team name is required');
+        await fetchJson('/api/teams', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+        await loadData();
+        renderAdminTeams();
+      }
+
+      async function editTeam(id) {
+        const data = state.data || { teams: [] };
+        const team = data.teams.find((t) => t.id === id);
+        if (!team) return;
+        const newName = prompt('Edit team name', team.teamName);
+        if (newName === null) return;
+        const newCode = prompt('Edit team code', team.code);
+        if (newCode === null) return;
+        await fetchJson(`/api/teams/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ teamName: newName, code: newCode }),
+        });
+        await loadData();
+        renderAdminTeams();
+      }
+
+      async function deleteTeam(id) {
+        if (!confirm('Delete this team?')) return;
+        await fetchJson(`/api/teams/${id}`, { method: 'DELETE' });
+        await loadData();
+        renderAdminTeams();
+      }
+
+      function renderAdminQuestions() {
+        const data = state.data || { questions: [] };
+        app.innerHTML = `
+          <div class="panel">
+            <h2>Question Management</h2>
+            <div class="two-col">
+              <div class="field">
+                <label>Question ID</label>
+                <input id="questionId" class="input" placeholder="Q1" />
+              </div>
+              <div class="field">
+                <label>Title</label>
+                <input id="questionTitle" class="input" placeholder="Question Title" />
+              </div>
+              <div class="field">
+                <label>Round</label>
+                <select id="questionRound" class="select">
+                  <option value="1">Round 1</option>
+                  <option value="2">Round 2</option>
+                  <option value="3">Round 3</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Difficulty</label>
+                <input id="questionDifficulty" class="input" value="Standard" />
+              </div>
+              <div class="field">
+                <label>Time Limit (seconds)</label>
+                <input id="questionTimeLimit" class="input" type="number" value="180" />
+              </div>
+            </div>
+            <div class="field">
+              <label>Items (one per line)</label>
+              <textarea id="questionItems" class="textarea" rows="8" placeholder="Example: word:Apple&#10;image:https://..."></textarea>
+            </div>
+            <div class="field">
+              <label>Groups (JSON format)</label>
+              <textarea id="questionGroups" class="textarea" rows="10" placeholder='[{"category":"Fruits","items":[{"id":"i1","text":"Apple"},{"id":"i2","text":"Banana"},{"id":"i3","text":"Orange"},{"id":"i4","text":"Grape"}]}]'></textarea>
+            </div>
+            <button class="primary-btn" onclick="createQuestion()">SAVE QUESTION</button>
+            <div class="scroll" style="margin-top:20px;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Round</th>
+                    <th>Difficulty</th>
+                    <th>Time</th>
+                    <th>Preview</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${(data.questions || []).map((q) => `
+                    <tr>
+                      <td>${q.id}</td>
+                      <td>${q.round}</td>
+                      <td>${q.difficulty}</td>
+                      <td>${q.timeLimit}</td>
+                      <td><button class="secondary-btn small" onclick="previewQuestion('${q.id}')">Preview</button></td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      }
+
+      async function createQuestion() {
+        const rawItems = document.getElementById('questionItems').value.split('\n').filter(Boolean);
+        const items = rawItems.map((line, index) => {
+          if (line.startsWith('image:')) return { id: `item-${index + 1}`, type: 'image', image: line.replace('image:', ''), text: '' };
+          return { id: `item-${index + 1}`, type: 'text', text: line };
+        });
+        let groups;
+        try {
+          groups = JSON.parse(document.getElementById('questionGroups').value || '[]');
+        } catch (error) {
+          return alert('Invalid groups JSON');
+        }
+
+        const payload = {
+          id: document.getElementById('questionId').value || `Q${Date.now()}`,
+          title: document.getElementById('questionTitle').value || 'Untitled Question',
+          round: Number(document.getElementById('questionRound').value),
+          difficulty: document.getElementById('questionDifficulty').value,
+          timeLimit: Number(document.getElementById('questionTimeLimit').value),
+          items,
+          groups,
+        };
+
+        await fetchJson('/api/questions', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+        await loadData();
+        renderAdminQuestions();
+      }
+
+      function previewQuestion(questionId) {
+        const question = (state.data.questions || []).find((q) => q.id === questionId);
+        if (!question) return;
+        const rows = question.items.map((item) => `
+          <div class="item-card">
+            ${item.type === 'image' && item.image ? `<img src="${item.image}" style="max-width:100%; max-height:80px; object-fit:contain;"/>` : item.text}
+          </div>
+        `).join('');
+
+        app.innerHTML = `
+          <div class="panel">
+            <h2>Question Preview</h2>
+            <p class="muted">Admin only preview: answers are visible here.</p>
+            <div class="question-grid">
+              ${rows}
+            </div>
+            <h3 style="margin-top:18px;">Correct groups</h3>
+            <ul>
+              ${(question.groups || []).map((group) => `<li><strong>${group.category}</strong>: ${group.items.map((item) => item.text || item.id).join(', ')}</li>`).join('')}
+            </ul>
+            <button class="secondary-btn" onclick="renderAdminQuestions()">Back</button>
+          </div>
+        `;
+      }
+
+      function renderDisplayPage() {
+        const data = state.data || { teams: [], competition: {}, state: {} };
+        const currentQuestion = data.state.currentQuestion;
+        app.innerHTML = `
+          <div class="panel">
+            <h2>Public Display</h2>
+            <div class="two-col">
+              <div class="stat"><div class="stat-label">Current Round</div><div class="stat-value">${data.competition.currentRound || 1}</div></div>
+              <div class="stat"><div class="stat-label">Current Question</div><div class="stat-value">${currentQuestion ? currentQuestion.title || currentQuestion.id : 'Waiting'}</div></div>
+              <div class="stat"><div class="stat-label">Timer</div><div class="stat-value">${data.competition.timerSeconds || 0}s</div></div>
+              <div class="stat"><div class="stat-label">Status</div><div class="stat-value">${data.competition.questionStatus || 'idle'}</div></div>
+            </div>
+            ${currentQuestion ? `
+              <div class="question-grid" style="margin-top:20px;">
+                ${(currentQuestion.items || []).map((item) => `
+                  <div class="item-card">
+                    ${item.type === 'image' && item.image ? `<img src="${item.image}" style="max-width:100%; max-height:80px; object-fit:contain;"/>` : item.text}
+                  </div>
+                `).join('')}
+              </div>
+            ` : '<p class="muted">Waiting for next question...</p>'}
+          </div>
+        `;
+      }
+
+      async function exportBackup() {
+        const res = await fetchJson('/api/data/backup', { method: 'POST' });
+        alert(`Backup saved: ${res.backupPath}`);
+      }
+
+      async function exportCsv() {
+        const data = state.data || { teams: [] };
+        const rows = [['Team Number', 'Team Name', 'Score', 'Status']];
+        for (const team of data.teams) {
+          rows.push([team.teamNumber, team.teamName, team.score || 0, team.status || 'waiting']);
+        }
+        const csv = rows.map((row) => row.join(',')).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'results.csv';
+        link.click();
+      }
+
+      async function resetAllData() {
+        if (!confirm('Reset the entire competition data?')) return;
+        await fetchJson('/api/reset', { method: 'POST' });
+        state.data = null;
+        render();
+      }
+
+      window.onload = async () => {
+        await loadData();
+        render();
+      };
+
+      window.addEventListener('beforeunload', async () => {
+        if (state.team) {
+          try {
+            await fetch('/api/teams/' + state.team.id + '/disconnect', { method: 'POST' });
+          } catch (e) {}
+        }
+      });
+
+      document.getElementById('roundSelect')?.addEventListener('change', async () => {
+        await loadData();
+        renderAdminDashboard();
+      });
+
+      window.joinTeam = joinTeam;
+      window.toggleSelection = toggleSelection;
+      window.submitConnection = submitConnection;
+      window.loginAdmin = loginAdmin;
+      window.createTeam = createTeam;
+      window.editTeam = editTeam;
+      window.deleteTeam = deleteTeam;
+      window.createQuestion = createQuestion;
+      window.previewQuestion = previewQuestion;
+      window.renderAdminQuestions = renderAdminQuestions;
+      window.renderAdminDashboard = renderAdminDashboard;
+      window.renderAdminTeams = renderAdminTeams;
+      window.renderDisplayPage = renderDisplayPage;
+      window.exportBackup = exportBackup;
+      window.exportCsv = exportCsv;
+      window.resetAllData = resetAllData;
+      window.startRound = startRound;
+      window.startQuestion = startQuestion;
+      window.pauseTimer = pauseTimer;
+      window.resumeTimer = resumeTimer;
+      window.endQuestion = endQuestion;
+      window.nextQuestion = nextQuestion;
+      window.endRound = endRound;
+      window.assignCurrentQuestion = assignCurrentQuestion;
+      window.clearSelection = clearSelection;
+      window.logoutAdmin = logoutAdmin;
+    </script>
+  </body>
+</html>
