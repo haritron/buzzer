@@ -500,7 +500,10 @@
               </div>
               <div class="field">
                 <label>Team Code</label>
-                <input id="teamCode" class="input" placeholder="optional generated" />
+                <div style="display:flex; gap:8px; align-items:center;">
+                  <input id="teamCode" class="input" placeholder="optional generated" style="flex:1;" />
+                  <button class="secondary-btn" type="button" onclick="generateTeamCode()">GENERATE CODE</button>
+                </div>
               </div>
               <div class="field">
                 <label>Status</label>
@@ -546,6 +549,15 @@
             </div>
           </div>
         `;
+      }
+
+      function generateTeamCode() {
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        let code = '';
+        for (let i = 0; i < 5; i += 1) {
+          code += chars[Math.floor(Math.random() * chars.length)];
+        }
+        document.getElementById('teamCode').value = code;
       }
 
       async function createTeam() {
