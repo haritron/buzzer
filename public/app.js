@@ -263,8 +263,131 @@ async function adminLogin() {
     globalState.adminLoggedIn = true;
     localStorage.setItem('adminLoggedIn', 'true');
     render();
-  } catch(e) { alert(e.message); }
+} catch(e) { alert(e.message); }
 }
+
+let adminConfigState = null;
+
+function renderAdminConfigBuilder() {
+  if (!adminConfigState) {
+    adminConfigState = JSON.parse(JSON.stringify(globalState.state.tournamentConfig || { rounds: [] }));
+    if (!adminConfigState.rounds) adminConfigState.rounds = [];
+  }
+  
+  return `
+    <div style="background:rgba(0,0,0,0.3); border-radius:12px; padding:20px; margin-bottom: 20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+        <h3 style="margin:0">Round Setting</h3>
+        <div>
+          <button class="btn btn-secondary" style="padding:5px 10px" onclick="addConfigRound()">+ Add Round</button>
+          <button class="btn btn-success" style="padding:5px 15px" onclick="saveVisualConfig()">SAVE SETTINGS</button>
+        </div>
+      </div>
+      
+      <div id="config-builder-container" style="display:flex; flex-direction:column; gap:15px;">
+        ${adminConfigState.rounds.map((r, i) => `
+          <div style="background:rgba(255,255,255,0.05); padding:15px; border-radius:8px; border-left: 4px solid var(--primary);">
+            <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+              <h4 style="margin:0; color:var(--primary)">Round ${r.roundNumber}</h4>
+              <button class="btn btn-danger" style="padding:2px 8px; font-size:0.8rem" onclick="removeConfigRound(${i})">X</button>
+            </div>
+            <div style="display:flex; gap:15px; margin-bottom:10px;">
+              <div style="flex:1">
+                <label style="font-size:0.8rem; color:var(--text-secondary)">Number of Batches</label>
+                <input type="number" min="1" value="${r.batches || 1}" onchange="updateConfigRound(${i}, 'batches', this.value)" style="width:100%; margin:0; padding:5px">
+              </div>
+              <div style="flex:1">
+                <label style="font-size:0.8rem; color:var(--text-secondary)">Batch Size</label>
+                <input type="number" min="1" value="${r.batchSize || 4}" onchange="updateConfigRound(${i}, 'batchSize', this.value)" style="width:100%; margin:0; padding:5px">
+              </div>
+            </div>
+            
+            <div style="background:rgba(0,0,0,0.2); padding:10px; border-radius:6px; margin-top:10px">
+              <h5 style="margin:0 0 10px 0; font-size:0.85rem; color:var(--text-secondary)">Points Setting</h5>
+              <div style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap">
+                <div style="flex:1; min-width:80px">
+                  <label style="font-size:0.75rem; color:var(--text-secondary)">Correct (+)</label>
+                  <input type="number" value="${r.pointsSetting?.positiveBase !== undefined ? r.pointsSetting.positiveBase : 10}" onchange="updateConfigPoints(${i}, 'positiveBase', this.value)" style="width:100%; margin:0; padding:4px">
+                </div>
+                <div style="flex:1; min-width:80px">
+                  <label style="font-size:0.75rem; color:var(--text-secondary)">Incorrect (-)</label>
+                  <input type="number" value="${r.pointsSetting?.negativeBase !== undefined ? r.pointsSetting.negativeBase : -5}" onchange="updateConfigPoints(${i}, 'negativeBase', this.value)" style="width:100%; margin:0; padding:4px">
+                </div>
+                <div style="flex:1; min-width:120px; display:flex; align-items:center; gap:5px; margin-bottom:5px;">
+                  <input type="checkbox" ${r.pointsSetting?.timeBasedDecay ? 'checked' : ''} onchange="updateConfigPoints(${i}, 'timeBasedDecay', this.checked)" style="margin:0; width:16px; height:16px;">
+                  <label style="font-size:0.75rem; color:var(--text-secondary); margin:0">Speed Bonus</label>
+                </div>
+                <div style="flex:1; min-width:80px">
+                  <label style="font-size:0.75rem; color:var(--text-secondary)">Max Bonus</label>
+                  <input type="number" value="${r.pointsSetting?.maxTimeBonus || 0}" onchange="updateConfigPoints(${i}, 'maxTimeBonus', this.value)" ${!r.pointsSetting?.timeBasedDecay ? 'disabled' : ''} style="width:100%; margin:0; padding:4px">
+                </div>
+              </div>
+            </div>
+          </div>
+        `).join('')}
+        ${adminConfigState.rounds.length === 0 ? '<div class="text-center" style="color:var(--text-secondary); padding:20px">No rounds. Click + Add Round.</div>' : ''}
+      </div>
+    </div>
+  `;
+}
+
+window.addConfigRound = function() {
+  const roundNum = adminConfigState.rounds.length + 1;
+  adminConfigState.rounds.push({
+    roundNumber: roundNum,
+    batches: 1,
+    batchSize: 4,
+    pointsSetting: { positiveBase: 10, negativeBase: -5, timeBasedDecay: false, maxTimeBonus: 0 }
+  });
+  render();
+};
+window.removeConfigRound = function(idx) {
+  adminConfigState.rounds.splice(idx, 1);
+  adminConfigState.rounds.forEach((r, i) => r.roundNumber = i + 1);
+  render();
+};
+window.updateConfigRound = function(idx, key, val) {
+  adminConfigState.rounds[idx][key] = parseInt(val);
+};
+window.updateConfigPoints = function(idx, key, val) {
+  if (key === 'timeBasedDecay') {
+    adminConfigState.rounds[idx].pointsSetting[key] = val;
+    render(); 
+  } else {
+    adminConfigState.rounds[idx].pointsSetting[key] = parseInt(val);
+  }
+};
+window.saveVisualConfig = async function() {
+  try {
+    await apiCall('/api/admin/state', 'POST', { tournamentConfig: adminConfigState });
+    alert('Settings Saved!');
+  } catch(e) { alert(e.message); }
+};
+
+function generateBatchOptions(selectedRound, selectedBatch) {
+  const config = globalState.state.tournamentConfig || { rounds: [] };
+  let optionsHtml = '';
+  if (config.rounds.length === 0) {
+    return `<option value="1-1">Round 1 - Batch 1</option>`;
+  }
+  config.rounds.forEach(r => {
+    for (let b = 1; b <= (r.batches || 1); b++) {
+      const isSelected = (r.roundNumber == selectedRound && b == selectedBatch) ? 'selected' : '';
+      optionsHtml += `<option value="${r.roundNumber}-${b}" ${isSelected}>Round ${r.roundNumber} - Batch ${b}</option>`;
+    }
+  });
+  return optionsHtml;
+}
+
+window.assignTeamFromSelect = async function(teamId, val) {
+  const [r, b] = val.split('-');
+  await assignTeam(teamId, r, b);
+};
+window.updateActiveMatchFromSelect = async function() {
+  const val = document.getElementById('activeMatchSelect').value;
+  const [r, b] = val.split('-');
+  await apiCall('/api/admin/state', 'POST', { activeRound: parseInt(r), activeBatch: parseInt(b), buzzerLocked: true, buzzedTeamId: null });
+};
 
 function renderAdminDashboard() {
   const st = globalState.state;
@@ -288,9 +411,10 @@ function renderAdminDashboard() {
               <div>
                 <strong>${t.teamName}</strong> <br/>
                 <small>${t.memberName}</small>
-                <div style="margin-top:5px; font-size:0.8rem; display:flex; align-items:center; gap:5px;">
-                  R: <input type="number" value="${t.assignedRound || 1}" onchange="assignTeam('${t.id}', this.value, ${t.assignedBatch || 1})" style="width:40px; padding:2px; margin:0; background:var(--bg-panel); color:white; border:1px solid rgba(255,255,255,0.2);">
-                  B: <input type="number" value="${t.assignedBatch || 1}" onchange="assignTeam('${t.id}', ${t.assignedRound || 1}, this.value)" style="width:40px; padding:2px; margin:0; background:var(--bg-panel); color:white; border:1px solid rgba(255,255,255,0.2);">
+                <div style="margin-top:5px; font-size:0.85rem;">
+                  <select class="custom-select" style="width:100%; padding:4px; background:var(--bg-panel); color:white; border:1px solid rgba(255,255,255,0.2); border-radius:4px" onchange="assignTeamFromSelect('${t.id}', this.value)">
+                    ${generateBatchOptions(t.assignedRound, t.assignedBatch)}
+                  </select>
                 </div>
               </div>
               <div class="score-controls">
@@ -309,12 +433,13 @@ function renderAdminDashboard() {
         
         <div style="background:rgba(0,0,0,0.3); padding:20px; border-radius:12px; margin-bottom:20px; text-align:center">
           <div style="font-size:1.2rem; margin-bottom:10px">Active Match: 
-            <strong>Round ${st.activeRound} • Batch ${st.activeBatch}</strong>
+            <strong style="color:var(--primary)">Round ${st.activeRound} • Batch ${st.activeBatch}</strong>
           </div>
           <div style="display:flex; gap:10px; justify-content:center; margin-bottom:20px">
-            <input type="number" id="setRound" value="${st.activeRound}" min="1" style="width:70px; margin:0; padding:5px" title="Round" />
-            <input type="number" id="setBatch" value="${st.activeBatch}" min="1" style="width:70px; margin:0; padding:5px" title="Batch" />
-            <button class="btn btn-secondary" onclick="updateActiveMatch()" style="padding:5px 15px">SET MATCH</button>
+            <select id="activeMatchSelect" class="custom-select" style="font-size:1.1rem; padding:8px 15px; width:auto; border-radius:6px; background:var(--bg-panel); color:white;">
+              ${generateBatchOptions(st.activeRound, st.activeBatch)}
+            </select>
+            <button class="btn btn-secondary" onclick="updateActiveMatchFromSelect()" style="padding:8px 20px">SET MATCH</button>
           </div>
           
           <div style="font-size:1.2rem; margin-bottom:10px; border-top:1px solid rgba(255,255,255,0.1); padding-top:20px;">Buzzer Status: 
@@ -346,15 +471,12 @@ function renderAdminDashboard() {
 
         <h3 class="mb-4 mt-4">Manual Flash & Auto-Score</h3>
         <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:10px">Clicking these will flash the screen AND auto-apply positive/negative points to the buzzed team based on your Tournament Settings.</p>
-        <div style="display:flex; gap:10px;">
-          <button class="btn btn-success" style="flex:1" onclick="flash('green')">CORRECT (Green)</button>
-          <button class="btn btn-danger" style="flex:1" onclick="flash('red')">INCORRECT (Red)</button>
+        <div style="display:flex; gap:10px; margin-bottom:30px">
+          <button class="btn btn-success" style="flex:1; padding:15px; font-weight:bold" onclick="flash('green')">CORRECT (+)</button>
+          <button class="btn btn-danger" style="flex:1; padding:15px; font-weight:bold" onclick="flash('red')">INCORRECT (-)</button>
         </div>
 
-        <h3 class="mb-4 mt-4">Tournament Settings (JSON)</h3>
-        <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:10px">Configure rules. Set <code>timeBasedDecay</code> to true for answering speed bonuses!</p>
-        <textarea id="tournamentConfig" rows="8" style="font-family:monospace; font-size:0.8rem" placeholder='{"rounds":[{"roundNumber":1, "pointsSetting":{"positiveBase":10, "negativeBase":-5, "timeBasedDecay":true, "maxTimeBonus":5}}]}'>${JSON.stringify(st.tournamentConfig, null, 2)}</textarea>
-        <button class="btn btn-secondary mt-2" style="width:100%" onclick="saveTournamentConfig()">Save Config</button>
+        ${renderAdminConfigBuilder()}
 
         <h3 class="mb-4 mt-4">Add New Question</h3>
         <input id="newQTitle" type="text" placeholder="Question Title" />
