@@ -1,203 +1,172 @@
+require('dotenv').config();
 const express = require('express');
-const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
+const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DATA_FILE = path.join(__dirname, 'data.json');
+
+// Initialize Supabase Client (Service Role Key recommended for backend)
+const supabaseUrl = process.env.SUPABASE_URL || 'https://lbdpaedflraegmyeyiat.supabase.co';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || 'sb_publishable_fc7Gs9mzlB7IrVS-PyijdQ_isJxONfg';
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-let clients = [];
-
-function ensureDataFile() {
-  if (!fs.existsSync(DATA_FILE)) {
-    const defaultData = {
-      teams: [],
-      questions: [],
-      admin: {
-        username: 'admin',
-        password: 'admin123',
-      },
-      state: {
-        buzzerLocked: true,
-        buzzedTeamId: null,
-        buzzedAt: null,
-        currentQuestionId: null,
-        currentSlideIndex: 0,
-        flashEvent: null,
-      }
-    };
-    fs.writeFileSync(DATA_FILE, JSON.stringify(defaultData, null, 2));
-  }
-}
-
-function loadData() {
-  ensureDataFile();
-  try {
-    return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-  } catch (err) {
-    // If file is corrupted or old format crashes, fallback to default structure
-    fs.unlinkSync(DATA_FILE);
-    ensureDataFile();
-    return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-  }
-}
-
-function saveData(data) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  broadcastState(data);
-}
-
-function broadcastState(data) {
-  const payload = JSON.stringify({
-    teams: data.teams,
-    state: data.state,
-    questions: data.questions
-  });
-  clients.forEach(client => {
-    client.res.write(`data: ${payload}\n\n`);
-  });
-}
-
-// SSE Event Stream
-app.get('/api/events', (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-
-  const clientId = Date.now();
-  const newClient = { id: clientId, res };
-  clients.push(newClient);
-
-  const data = loadData();
-  res.write(`data: ${JSON.stringify({ teams: data.teams, state: data.state, questions: data.questions })}\n\n`);
-
-  req.on('close', () => {
-    clients = clients.filter(client => client.id !== clientId);
-  });
-});
+// Admin credentials (should also be env vars in production)
+const ADMIN_USER = process.env.ADMIN_USER || 'admin';
+const ADMIN_PASS = process.env.ADMIN_PASS || 'admin123';
 
 app.post('/api/admin/login', (req, res) => {
-  const data = loadData();
   const { username, password } = req.body || {};
-  if (username === data.admin.username && password === data.admin.password) {
+  if (username === ADMIN_USER && password === ADMIN_PASS) {
     return res.json({ ok: true });
   }
   return res.status(401).json({ ok: false, message: 'Invalid admin credentials' });
 });
 
-app.post('/api/teams/join', (req, res) => {
-  const data = loadData();
+app.post('/api/teams/join', async (req, res) => {
   const { memberName, teamName } = req.body;
   if (!memberName || !teamName) return res.status(400).json({ ok: false, message: 'Missing fields' });
   
-  const team = {
-    id: crypto.randomUUID(),
-    memberName,
-    teamName,
-    score: 0,
-    joinedAt: new Date().toISOString()
-  };
+  const { data, error } = await supabase
+    .from('teams')
+    .insert([{ member_name: memberName, team_name: teamName }])
+    .select()
+    .single();
 
-  data.teams.push(team);
-  saveData(data);
-  res.json({ ok: true, team });
+  if (error) return res.status(500).json({ ok: false, message: error.message });
+  res.json({ ok: true, team: { id: data.id, memberName: data.member_name, teamName: data.team_name, score: data.score } });
 });
 
-app.post('/api/buzz', (req, res) => {
-  const data = loadData();
+app.post('/api/buzz', async (req, res) => {
   const { teamId } = req.body;
   
-  if (data.state.buzzerLocked) {
-    return res.status(400).json({ ok: false, message: 'Buzzer is locked' });
-  }
-  
-  if (data.state.buzzedTeamId) {
-    return res.status(400).json({ ok: false, message: 'Someone already buzzed' });
+  // ATOMIC UPDATE: Only update if buzzer_locked is false
+  const { data, error } = await supabase
+    .from('game_state')
+    .update({ 
+      buzzer_locked: true, 
+      buzzed_team_id: teamId, 
+      buzzed_at: new Date().toISOString() 
+    })
+    .eq('id', 1)
+    .eq('buzzer_locked', false)
+    .select();
+
+  if (error) {
+    return res.status(500).json({ ok: false, message: error.message });
   }
 
-  const team = data.teams.find(t => t.id === teamId);
-  if (!team) return res.status(404).json({ ok: false, message: 'Team not found' });
-
-  data.state.buzzedTeamId = teamId;
-  data.state.buzzedAt = new Date().toISOString();
-  // We lock the buzzer immediately when someone buzzes to prevent ties
-  data.state.buzzerLocked = true; 
-  saveData(data);
-  res.json({ ok: true });
+  // If rows updated > 0, this team won the race!
+  if (data && data.length > 0) {
+    return res.json({ ok: true, buzzed: true });
+  } else {
+    return res.status(400).json({ ok: false, message: 'Buzzer is locked or someone else won the race' });
+  }
 });
 
-app.post('/api/admin/state', (req, res) => {
-  const data = loadData();
+app.post('/api/admin/state', async (req, res) => {
   const newState = req.body;
-  data.state = { ...data.state, ...newState, flashEvent: null };
-  saveData(data);
+  
+  const updateData = { flash_type: null, flash_timestamp: null };
+  if (newState.buzzerLocked !== undefined) updateData.buzzer_locked = newState.buzzerLocked;
+  if (newState.buzzedTeamId === null) {
+    updateData.buzzed_team_id = null;
+    updateData.buzzed_at = null;
+  }
+  if (newState.currentQuestionId !== undefined) updateData.current_question_id = newState.currentQuestionId;
+  if (newState.currentSlideIndex !== undefined) updateData.current_slide_index = newState.currentSlideIndex;
+
+  const { error } = await supabase
+    .from('game_state')
+    .update(updateData)
+    .eq('id', 1);
+
+  if (error) return res.status(500).json({ ok: false, message: error.message });
   res.json({ ok: true });
 });
 
-app.post('/api/admin/flash', (req, res) => {
-  const data = loadData();
+app.post('/api/admin/flash', async (req, res) => {
   const { type } = req.body; // 'green' or 'red'
-  data.state.flashEvent = { type, timestamp: Date.now() };
-  saveData(data);
+  
+  const { error } = await supabase
+    .from('game_state')
+    .update({ 
+      flash_type: type, 
+      flash_timestamp: Date.now() 
+    })
+    .eq('id', 1);
+
+  if (error) return res.status(500).json({ ok: false, message: error.message });
   res.json({ ok: true });
 });
 
-app.post('/api/admin/score', (req, res) => {
-  const data = loadData();
+app.post('/api/admin/score', async (req, res) => {
   const { teamId, amount } = req.body;
-  const team = data.teams.find(t => t.id === teamId);
-  if (team) {
-    team.score += amount;
-    saveData(data);
+  
+  // Get current score
+  const { data: teamData } = await supabase.from('teams').select('score').eq('id', teamId).single();
+  if (teamData) {
+    const { error } = await supabase
+      .from('teams')
+      .update({ score: teamData.score + amount })
+      .eq('id', teamId);
+    if (error) return res.status(500).json({ ok: false, message: error.message });
   }
   res.json({ ok: true });
 });
 
-app.delete('/api/teams/:id', (req, res) => {
-  const data = loadData();
-  data.teams = data.teams.filter(t => t.id !== req.params.id);
-  saveData(data);
+app.delete('/api/teams/:id', async (req, res) => {
+  const { error } = await supabase.from('teams').delete().eq('id', req.params.id);
+  if (error) return res.status(500).json({ ok: false, message: error.message });
   res.json({ ok: true });
 });
 
-app.post('/api/questions', (req, res) => {
-  const data = loadData();
-  const { title, slides } = req.body; // slides: [{ type: 'text'|'image'|'sound', content: '...' }]
-  const question = {
-    id: crypto.randomUUID(),
-    title,
-    slides: slides || []
-  };
-  data.questions.push(question);
-  saveData(data);
-  res.json({ ok: true, question });
+app.post('/api/questions', async (req, res) => {
+  const { title, slides } = req.body; 
+  const { data, error } = await supabase
+    .from('questions')
+    .insert([{ title, slides: slides || [] }])
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ ok: false, message: error.message });
+  res.json({ ok: true, question: data });
 });
 
-app.post('/api/reset-data', (req, res) => {
-  const defaultData = {
-    teams: [],
-    questions: [],
-    admin: {
-      username: 'admin',
-      password: 'admin123',
-    },
-    state: {
-      buzzerLocked: true,
-      buzzedTeamId: null,
-      buzzedAt: null,
-      currentQuestionId: null,
-      currentSlideIndex: 0,
-      flashEvent: null,
-    }
-  };
-  fs.writeFileSync(DATA_FILE, JSON.stringify(defaultData, null, 2));
-  broadcastState(defaultData);
+app.post('/api/reset-data', async (req, res) => {
+  // Clear teams and reset game state
+  await supabase.from('teams').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+  await supabase.from('game_state').update({
+    buzzer_locked: true,
+    buzzed_team_id: null,
+    buzzed_at: null,
+    current_question_id: null,
+    current_slide_index: 0,
+    flash_type: null,
+    flash_timestamp: null
+  }).eq('id', 1);
+
   res.json({ ok: true });
+});
+
+app.get('/api/initial-state', async (req, res) => {
+  // Fetch initial data for clients who just connected
+  const [teamsRes, questionsRes, stateRes] = await Promise.all([
+    supabase.from('teams').select('*').order('joined_at', { ascending: true }),
+    supabase.from('questions').select('*').order('id', { ascending: true }),
+    supabase.from('game_state').select('*').eq('id', 1).single()
+  ]);
+
+  res.json({
+    ok: true,
+    teams: teamsRes.data || [],
+    questions: questionsRes.data || [],
+    state: stateRes.data || {}
+  });
 });
 
 app.get('*', (req, res) => {

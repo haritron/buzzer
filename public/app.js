@@ -14,21 +14,65 @@ let globalState = {
   adminLoggedIn: localStorage.getItem('adminLoggedIn') === 'true'
 };
 
-// SSE Listener
-const evtSource = new EventSource('/api/events');
-evtSource.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-  const oldFlash = globalState.state.flashEvent;
-  globalState.teams = data.teams;
-  globalState.questions = data.questions;
-  globalState.state = data.state;
-  
-  if (data.state.flashEvent && (!oldFlash || oldFlash.timestamp !== data.state.flashEvent.timestamp)) {
-    triggerFlash(data.state.flashEvent.type);
-  }
-  
-  render();
-};
+const supabaseUrl = 'https://lbdpaedflraegmyeyiat.supabase.co';
+const supabaseKey = 'sb_publishable_fc7Gs9mzlB7IrVS-PyijdQ_isJxONfg';
+const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+async function initApp() {
+  try {
+    const res = await apiCall('/api/initial-state', 'GET');
+    globalState.teams = res.teams.map(t => ({id: t.id, memberName: t.member_name, teamName: t.team_name, score: t.score}));
+    globalState.questions = res.questions;
+    globalState.state = {
+      buzzerLocked: res.state.buzzer_locked,
+      buzzedTeamId: res.state.buzzed_team_id,
+      currentQuestionId: res.state.current_question_id,
+      currentSlideIndex: res.state.current_slide_index,
+      flashEvent: res.state.flash_type ? { type: res.state.flash_type, timestamp: res.state.flash_timestamp } : null
+    };
+    render();
+  } catch(e) { console.error('Failed to fetch initial state', e); }
+
+  // Setup Supabase Realtime
+  supabase.channel('public:db_changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'game_state' }, payload => {
+      const row = payload.new;
+      if (!row) return;
+      const oldFlash = globalState.state.flashEvent;
+      globalState.state.buzzerLocked = row.buzzer_locked;
+      globalState.state.buzzedTeamId = row.buzzed_team_id;
+      globalState.state.currentQuestionId = row.current_question_id;
+      globalState.state.currentSlideIndex = row.current_slide_index;
+      globalState.state.flashEvent = row.flash_type ? { type: row.flash_type, timestamp: row.flash_timestamp } : null;
+      
+      if (globalState.state.flashEvent && (!oldFlash || oldFlash.timestamp !== globalState.state.flashEvent.timestamp)) {
+        triggerFlash(globalState.state.flashEvent.type);
+      }
+      render();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'teams' }, payload => {
+      if (payload.eventType === 'INSERT') {
+        globalState.teams.push({ id: payload.new.id, memberName: payload.new.member_name, teamName: payload.new.team_name, score: payload.new.score });
+      } else if (payload.eventType === 'UPDATE') {
+        const idx = globalState.teams.findIndex(t => t.id === payload.new.id);
+        if (idx !== -1) {
+          globalState.teams[idx].score = payload.new.score;
+        }
+      } else if (payload.eventType === 'DELETE') {
+        globalState.teams = globalState.teams.filter(t => t.id !== payload.old.id);
+      }
+      render();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'questions' }, payload => {
+      if (payload.eventType === 'INSERT') {
+        globalState.questions.push(payload.new);
+      }
+      render();
+    })
+    .subscribe();
+}
+
+initApp();
 
 async function apiCall(url, method = 'POST', body = null) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };

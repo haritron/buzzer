@@ -1,5 +1,13 @@
 {
-  "teams": [],
+  "teams": [
+    {
+      "id": "4065fa1f-57f5-4e6f-ba55-03a675f986f8",
+      "memberName": "hari",
+      "teamName": "john",
+      "score": 0,
+      "joinedAt": "2026-09-10T10:03:32.870Z"
+    }
+  ],
   "questions": [],
   "admin": {
     "username": "admin",
