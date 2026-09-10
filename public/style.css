@@ -236,24 +236,39 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 20px 50px rgba(0,0,0,0.5);
 }
 
-/* Buzzed Team Overlay */
+/* Buzzed Team Overlay - Massive Celebration */
 .buzzer-overlay {
   position: absolute;
-  bottom: -100px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(245, 158, 11, 0.95);
-  color: #000;
-  padding: 20px 60px;
-  border-radius: 50px 50px 0 0;
-  font-size: 3rem;
-  font-weight: 900;
-  box-shadow: 0 -10px 40px rgba(245, 158, 11, 0.5);
-  transition: bottom 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-  z-index: 200;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: radial-gradient(circle at center, rgba(34, 197, 94, 0.95), rgba(21, 128, 61, 0.98));
+  color: white;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(1.1);
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
-.buzzer-overlay.show {
-  bottom: 0;
+.buzzer-overlay.show { 
+  opacity: 1; 
+  transform: scale(1);
+}
+.buzzer-overlay .buzzer-text {
+  font-size: 3rem;
+  text-transform: uppercase;
+  letter-spacing: 5px;
+  opacity: 0.8;
+  margin-bottom: 20px;
+}
+.buzzer-overlay .buzzer-name {
+  font-size: 8rem;
+  font-weight: 900;
+  text-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  text-align: center;
+  line-height: 1.1;
 }
 
 /* Screen Flashes */

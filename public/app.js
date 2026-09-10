@@ -532,6 +532,11 @@ function renderAdminDashboard() {
       </div>
     </div>
   `;
+
+  // Initialize the editor now that the Canvas HTML exists
+  if (window.Editor) {
+    window.Editor.init();
+  }
 }
 
 async function changeScore(teamId, amount) {
@@ -551,15 +556,24 @@ async function flash(type) {
 }
 async function setQuestion() {
   const qid = document.getElementById('qSelect').value;
-  await apiCall('/api/admin/state', 'POST', { currentQuestionId: qid, currentSlideIndex: 0 });
+  const slides = globalState.slides.filter(s => s.question_id === qid).sort((a,b) => a.slide_order - b.slide_order);
+  const currentSlideId = slides.length > 0 ? slides[0].id : null;
+  await apiCall('/api/admin/state', 'POST', { currentQuestionId: qid, currentSlideIndex: 0, currentSlideId });
 }
 async function prevSlide() {
+  const qid = globalState.state.currentQuestionId;
+  const slides = globalState.slides.filter(s => s.question_id === qid).sort((a,b) => a.slide_order - b.slide_order);
   const i = Math.max(0, globalState.state.currentSlideIndex - 1);
-  await apiCall('/api/admin/state', 'POST', { currentSlideIndex: i });
+  const currentSlideId = slides.length > i ? slides[i].id : null;
+  await apiCall('/api/admin/state', 'POST', { currentSlideIndex: i, currentSlideId });
 }
 async function nextSlide() {
+  const qid = globalState.state.currentQuestionId;
+  const slides = globalState.slides.filter(s => s.question_id === qid).sort((a,b) => a.slide_order - b.slide_order);
   const i = globalState.state.currentSlideIndex + 1;
-  await apiCall('/api/admin/state', 'POST', { currentSlideIndex: i });
+  const currentSlideId = slides.length > i ? slides[i].id : (slides.length > 0 ? slides[slides.length-1].id : null);
+  const finalI = slides.length > i ? i : (slides.length > 0 ? slides.length-1 : 0);
+  await apiCall('/api/admin/state', 'POST', { currentSlideIndex: finalI, currentSlideId });
 }
 async function resetGame() {
   if(confirm('Are you sure? This deletes all teams and resets game state.')){
@@ -634,36 +648,49 @@ window.addEventListener('keydown', (e) => {
 // ---------------------------------
 function renderDisplay() {
   const st = globalState.state;
-  let slideHtml = '';
-  
-  if (st.currentQuestionId) {
-    const q = globalState.questions.find(q => q.id === st.currentQuestionId);
-    if (q && q.slides[st.currentSlideIndex]) {
-      const slide = q.slides[st.currentSlideIndex];
-      if (slide.type === 'text') slideHtml = `<div class="question-slide">${slide.content}</div>`;
-      if (slide.type === 'image') slideHtml = `<div class="question-slide"><img src="${slide.content}"/></div>`;
-      if (slide.type === 'html') slideHtml = `<div class="question-slide" style="width:100%;height:100%">${slide.content}</div>`;
-      if (slide.type === 'sound') slideHtml = `<div class="question-slide">🔊 Playing Audio...<audio src="${slide.content}" autoplay></audio></div>`;
-    }
-  }
-
   const buzzedTeam = globalState.teams.find(t => t.id === st.buzzedTeamId);
 
   app.innerHTML = `
     <div class="display-container">
       <div id="flashOverlay" class="flash-overlay"></div>
       
-      <div style="position:absolute; top:20px; right:30px; font-size:1.5rem; color:rgba(255,255,255,0.5); font-weight:bold;">
+      <div style="position:absolute; top:20px; right:30px; font-size:1.5rem; color:rgba(255,255,255,0.5); font-weight:bold; z-index:10;">
         Round ${st.activeRound} • Batch ${st.activeBatch}
       </div>
 
-      ${slideHtml || '<div class="question-slide" style="color:var(--text-secondary)">Waiting for question...</div>'}
+      <div id="live-presentation" style="position:relative; width:90vw; aspect-ratio:16/9; background:#000; border-radius:12px; overflow:hidden; display:flex; align-items:center; justify-content:center; box-shadow:0 20px 50px rgba(0,0,0,0.5);">
+        <span style="color:var(--text-secondary)">Waiting for question...</span>
+      </div>
       
       <div class="buzzer-overlay ${buzzedTeam ? 'show' : ''}">
-        ${buzzedTeam ? buzzedTeam.teamName : ''}
+        <div class="buzzer-text">BUZZED IN!</div>
+        <div class="buzzer-name">${buzzedTeam ? buzzedTeam.teamName : ''}</div>
       </div>
     </div>
   `;
+
+  // Render the actual slide elements using the renderer engine
+  if (st.currentSlideId) {
+    // We need to wait for DOM to update app.innerHTML
+    setTimeout(() => {
+      const container = document.getElementById('live-presentation');
+      if (container && window.SlideRenderer) {
+        // Find elements for the current slide
+        const elements = globalState.slideElements.filter(e => e.slide_id === st.currentSlideId);
+        if (elements.length > 0) {
+          window.SlideRenderer.render(container, elements);
+        } else {
+          container.innerHTML = '<span style="color:var(--text-secondary)">Blank Slide</span>';
+        }
+      }
+    }, 50);
+  } else if (st.currentQuestionId) {
+    // Fallback: Just show the question title if no slide is selected
+    const q = globalState.questions.find(q => q.id === st.currentQuestionId);
+    if (q) {
+      document.getElementById('live-presentation').innerHTML = `<div style="font-size:3rem; padding:40px; text-align:center">${q.title}</div>`;
+    }
+  }
 }
 
 function triggerFlash(type) {
