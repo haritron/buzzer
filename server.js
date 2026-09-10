@@ -31,14 +31,62 @@ app.post('/api/teams/join', async (req, res) => {
   const { memberName, teamName } = req.body;
   if (!memberName || !teamName) return res.status(400).json({ ok: false, message: 'Missing fields' });
   
-  const { data, error } = await supabase
-    .from('teams')
-    .insert([{ member_name: memberName, team_name: teamName }])
-    .select()
-    .single();
+  // Fetch all existing teams to check for username usage and existing team names
+  const { data: existingTeams, error: errMem } = await supabase.from('teams').select('*');
+  if (errMem) return res.status(500).json({ ok: false, message: errMem.message });
 
-  if (error) return res.status(500).json({ ok: false, message: error.message });
-  res.json({ ok: true, team: { id: data.id, memberName: data.member_name, teamName: data.team_name, score: data.score } });
+  let existingTeam = null;
+  let nameAlreadyUsed = false;
+  
+  for (const t of existingTeams) {
+    const members = t.member_name.split(', ').map(n => n.toLowerCase());
+    if (members.includes(memberName.toLowerCase())) {
+      if (t.team_name.toLowerCase() === teamName.toLowerCase()) {
+        // Re-joining their own team
+        existingTeam = t;
+        nameAlreadyUsed = false;
+      } else {
+        // Username taken by another team
+        nameAlreadyUsed = true;
+      }
+    }
+    if (t.team_name.toLowerCase() === teamName.toLowerCase()) {
+      existingTeam = t;
+    }
+  }
+
+  if (nameAlreadyUsed) {
+    return res.status(400).json({ ok: false, message: 'This username is already taken by someone else.' });
+  }
+
+  if (existingTeam) {
+    const members = existingTeam.member_name.split(', ').map(n => n.toLowerCase());
+    if (!members.includes(memberName.toLowerCase())) {
+      // Add new member to existing team
+      const newMemberName = existingTeam.member_name + ', ' + memberName;
+      const { data, error } = await supabase
+        .from('teams')
+        .update({ member_name: newMemberName })
+        .eq('id', existingTeam.id)
+        .select()
+        .single();
+      if (error) return res.status(500).json({ ok: false, message: error.message });
+      return res.json({ ok: true, team: { id: data.id, memberName: data.member_name, teamName: data.team_name, score: data.score } });
+    } else {
+      // Re-joining with same name
+      return res.json({ ok: true, team: { id: existingTeam.id, memberName: existingTeam.member_name, teamName: existingTeam.team_name, score: existingTeam.score } });
+    }
+  } else {
+    // Create entirely new team
+    const { data, error } = await supabase
+      .from('teams')
+      .insert([{ member_name: memberName, team_name: teamName }])
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ ok: false, message: error.message });
+    res.json({ ok: true, team: { id: data.id, memberName: data.member_name, teamName: data.team_name, score: data.score } });
+  }
 });
 
 app.post('/api/buzz', async (req, res) => {

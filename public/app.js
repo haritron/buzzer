@@ -2,6 +2,7 @@ const app = document.getElementById('app');
 
 console.log("--- App.js Loaded v2 ---");
 let globalState = {
+  isLoaded: false,
   teams: [],
   questions: [],
   state: {
@@ -37,6 +38,7 @@ async function initApp() {
       currentSlideIndex: res.state.current_slide_index || 0,
       flashEvent: res.state.flash_type ? { type: res.state.flash_type, timestamp: res.state.flash_timestamp } : null
     };
+    globalState.isLoaded = true;
     render();
   } catch(e) { console.error('Failed to fetch initial state', e); }
 
@@ -65,6 +67,8 @@ async function initApp() {
           const idx = globalState.teams.findIndex(t => t.id === payload.new.id);
           if (idx !== -1) {
             globalState.teams[idx].score = payload.new.score;
+            globalState.teams[idx].memberName = payload.new.member_name;
+            globalState.teams[idx].teamName = payload.new.team_name;
           }
         } else if (payload.eventType === 'DELETE') {
           globalState.teams = globalState.teams.filter(t => t.id !== payload.old.id);
@@ -155,6 +159,11 @@ async function joinTeam() {
 }
 
 function renderPlayerDashboard() {
+  if (!globalState.isLoaded) {
+    app.innerHTML = `<div class="text-center mt-5" style="color: var(--text-secondary);">Loading...</div>`;
+    return;
+  }
+
   const myTeamData = globalState.teams.find(t => t.id === globalState.myTeam.id);
   if (!myTeamData) { // Server restarted / team deleted
     globalState.myTeam = null;
