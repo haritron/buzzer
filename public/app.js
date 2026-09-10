@@ -160,6 +160,15 @@ async function joinTeam() {
     const res = await apiCall('/api/teams/join', 'POST', { memberName, teamName });
     globalState.myTeam = res.team;
     localStorage.setItem('myTeam', JSON.stringify(res.team));
+    
+    // Optimistically add to teams list so render() doesn't think it was deleted
+    const existingIdx = globalState.teams.findIndex(t => t.id === res.team.id);
+    if (existingIdx === -1) {
+      globalState.teams.push(res.team);
+    } else {
+      globalState.teams[existingIdx] = res.team;
+    }
+
     render();
   } catch(e) { 
     errorEl.textContent = e.message;
