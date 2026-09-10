@@ -17,9 +17,9 @@ let globalState = {
 const supabaseUrl = 'https://lbdpaedflraegmyeyiat.supabase.co';
 const supabaseKey = 'sb_publishable_fc7Gs9mzlB7IrVS-PyijdQ_isJxONfg';
 
-let supabase = null;
+let supabaseClient = null;
 if (window.supabase) {
-  supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+  supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
 } else {
   console.warn("Supabase CDN failed to load or index.html is cached. Realtime disabled.");
 }
@@ -40,8 +40,8 @@ async function initApp() {
   } catch(e) { console.error('Failed to fetch initial state', e); }
 
   // Setup Supabase Realtime
-  if (supabase) {
-    supabase.channel('public:db_changes')
+  if (supabaseClient) {
+    supabaseClient.channel('public:db_changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'game_state' }, payload => {
         const row = payload.new;
         if (!row) return;
