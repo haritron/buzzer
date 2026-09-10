@@ -16,7 +16,13 @@ let globalState = {
 
 const supabaseUrl = 'https://lbdpaedflraegmyeyiat.supabase.co';
 const supabaseKey = 'sb_publishable_fc7Gs9mzlB7IrVS-PyijdQ_isJxONfg';
-const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+let supabase = null;
+if (window.supabase) {
+  supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+} else {
+  console.warn("Supabase CDN failed to load or index.html is cached. Realtime disabled.");
+}
 
 async function initApp() {
   try {
@@ -27,49 +33,51 @@ async function initApp() {
       buzzerLocked: res.state.buzzer_locked,
       buzzedTeamId: res.state.buzzed_team_id,
       currentQuestionId: res.state.current_question_id,
-      currentSlideIndex: res.state.current_slide_index,
+      currentSlideIndex: res.state.current_slide_index || 0,
       flashEvent: res.state.flash_type ? { type: res.state.flash_type, timestamp: res.state.flash_timestamp } : null
     };
     render();
   } catch(e) { console.error('Failed to fetch initial state', e); }
 
   // Setup Supabase Realtime
-  supabase.channel('public:db_changes')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'game_state' }, payload => {
-      const row = payload.new;
-      if (!row) return;
-      const oldFlash = globalState.state.flashEvent;
-      globalState.state.buzzerLocked = row.buzzer_locked;
-      globalState.state.buzzedTeamId = row.buzzed_team_id;
-      globalState.state.currentQuestionId = row.current_question_id;
-      globalState.state.currentSlideIndex = row.current_slide_index;
-      globalState.state.flashEvent = row.flash_type ? { type: row.flash_type, timestamp: row.flash_timestamp } : null;
-      
-      if (globalState.state.flashEvent && (!oldFlash || oldFlash.timestamp !== globalState.state.flashEvent.timestamp)) {
-        triggerFlash(globalState.state.flashEvent.type);
-      }
-      render();
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'teams' }, payload => {
-      if (payload.eventType === 'INSERT') {
-        globalState.teams.push({ id: payload.new.id, memberName: payload.new.member_name, teamName: payload.new.team_name, score: payload.new.score });
-      } else if (payload.eventType === 'UPDATE') {
-        const idx = globalState.teams.findIndex(t => t.id === payload.new.id);
-        if (idx !== -1) {
-          globalState.teams[idx].score = payload.new.score;
+  if (supabase) {
+    supabase.channel('public:db_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'game_state' }, payload => {
+        const row = payload.new;
+        if (!row) return;
+        const oldFlash = globalState.state.flashEvent;
+        globalState.state.buzzerLocked = row.buzzer_locked;
+        globalState.state.buzzedTeamId = row.buzzed_team_id;
+        globalState.state.currentQuestionId = row.current_question_id;
+        globalState.state.currentSlideIndex = row.current_slide_index || 0;
+        globalState.state.flashEvent = row.flash_type ? { type: row.flash_type, timestamp: row.flash_timestamp } : null;
+        
+        if (globalState.state.flashEvent && (!oldFlash || oldFlash.timestamp !== globalState.state.flashEvent.timestamp)) {
+          triggerFlash(globalState.state.flashEvent.type);
         }
-      } else if (payload.eventType === 'DELETE') {
-        globalState.teams = globalState.teams.filter(t => t.id !== payload.old.id);
-      }
-      render();
-    })
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'questions' }, payload => {
-      if (payload.eventType === 'INSERT') {
-        globalState.questions.push(payload.new);
-      }
-      render();
-    })
-    .subscribe();
+        render();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'teams' }, payload => {
+        if (payload.eventType === 'INSERT') {
+          globalState.teams.push({ id: payload.new.id, memberName: payload.new.member_name, teamName: payload.new.team_name, score: payload.new.score });
+        } else if (payload.eventType === 'UPDATE') {
+          const idx = globalState.teams.findIndex(t => t.id === payload.new.id);
+          if (idx !== -1) {
+            globalState.teams[idx].score = payload.new.score;
+          }
+        } else if (payload.eventType === 'DELETE') {
+          globalState.teams = globalState.teams.filter(t => t.id !== payload.old.id);
+        }
+        render();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'questions' }, payload => {
+        if (payload.eventType === 'INSERT') {
+          globalState.questions.push(payload.new);
+        }
+        render();
+      })
+      .subscribe();
+  }
 }
 
 initApp();
