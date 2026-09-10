@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Ranking Board</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --text: #f8fafc;
+      --gold: #fbbf24;
+      --silver: #94a3b8;
+      --bronze: #b45309;
+    }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 40px;
+    }
+    h1 {
+      text-align: center;
+      font-size: 3rem;
+      margin-bottom: 40px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+    .leaderboard {
+      max-width: 800px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+    .team-row {
+      background: var(--panel);
+      padding: 20px 30px;
+      border-radius: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.5);
+      transition: transform 0.3s ease;
+    }
+    .team-row:hover {
+      transform: scale(1.02);
+    }
+    .rank-1 { border-left: 8px solid var(--gold); }
+    .rank-2 { border-left: 8px solid var(--silver); }
+    .rank-3 { border-left: 8px solid var(--bronze); }
+    
+    .team-info h2 {
+      margin: 0 0 5px 0;
+      font-size: 1.8rem;
+    }
+    .team-members {
+      color: #94a3b8;
+      font-size: 0.9rem;
+    }
+    .score {
+      font-size: 2.5rem;
+      font-weight: bold;
+    }
+    .rank-number {
+      font-size: 2rem;
+      font-weight: bold;
+      margin-right: 20px;
+      opacity: 0.5;
+    }
+    .left-side {
+      display: flex;
+      align-items: center;
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+  <h1>🏆 Tournament Leaderboard 🏆</h1>
+  <div class="leaderboard" id="leaderboard">
+    <div style="text-align:center">Loading rankings...</div>
+  </div>
+
+  <script>
+    // Note: You will need to replace this with your actual Supabase URL and Anon Key in production
+    // For now it reads from local storage or prompts if missing.
+    let supabaseUrl = localStorage.getItem('supabaseUrl');
+    let supabaseKey = localStorage.getItem('supabaseKey');
+    if (!supabaseUrl || !supabaseKey) {
+      document.getElementById('leaderboard').innerHTML = '<div style="text-align:center; color:red">Missing Supabase Credentials. Please login to admin first.</div>';
+    } else {
+      const supabase = supabaseClient.createClient(supabaseUrl, supabaseKey);
+      
+      async function fetchRankings() {
+        const { data: teams, error: tErr } = await supabase.from('teams').select('*').order('score', { ascending: false });
+        const { data: members, error: mErr } = await supabase.from('team_members').select('*');
+        
+        if (tErr) return console.error(tErr);
+
+        const board = document.getElementById('leaderboard');
+        board.innerHTML = '';
+
+        teams.forEach((t, index) => {
+          const rank = index + 1;
+          let rankClass = '';
+          if (rank === 1) rankClass = 'rank-1';
+          if (rank === 2) rankClass = 'rank-2';
+          if (rank === 3) rankClass = 'rank-3';
+
+          const teamMems = members.filter(m => m.team_id === t.id).map(m => m.member_name).join(', ');
+
+          board.innerHTML += `
+            <div class="team-row ${rankClass}">
+              <div class="left-side">
+                <div class="rank-number">#${rank}</div>
+                <div class="team-info">
+                  <h2>${t.team_name}</h2>
+                  <div class="team-members">${teamMems || 'No members yet'}</div>
+                </div>
+              </div>
+              <div class="score">${t.score} pts</div>
+            </div>
+          `;
+        });
+      }
+
+      fetchRankings();
+
+      // Subscribe to real-time changes
+      supabase.channel('public:teams')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'teams' }, fetchRankings)
+        .subscribe();
+      
+      supabase.channel('public:team_members')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'team_members' }, fetchRankings)
+        .subscribe();
+    }
+  </script>
+</body>
+</html>

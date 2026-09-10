@@ -454,21 +454,6 @@ function renderAdminDashboard() {
           </div>
         </div>
 
-        <h3 class="mb-4 mt-4">Questions</h3>
-        <div style="display:flex; gap:10px; margin-bottom: 20px">
-          <select id="qSelect" style="margin:0; flex:1">
-            <option value="">-- Select Question --</option>
-            ${globalState.questions.map(q => `<option value="${q.id}" ${q.id === st.currentQuestionId ? 'selected' : ''}>${q.title}</option>`).join('')}
-          </select>
-          <button class="btn" onclick="setQuestion()">SET</button>
-        </div>
-
-        <div style="display:flex; gap:10px; justify-content:center">
-          <button class="btn btn-secondary" onclick="prevSlide()">Prev Slide</button>
-          <button class="btn btn-secondary" onclick="nextSlide()">Next Slide</button>
-        </div>
-        <div class="text-center mt-4">Current Slide: ${st.currentSlideIndex + 1}</div>
-
         <h3 class="mb-4 mt-4">Manual Flash & Auto-Score</h3>
         <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:10px">Clicking these will flash the screen AND auto-apply positive/negative points to the buzzed team based on your Tournament Settings.</p>
         <div style="display:flex; gap:10px; margin-bottom:30px">
@@ -478,11 +463,65 @@ function renderAdminDashboard() {
 
         ${renderAdminConfigBuilder()}
 
-        <h3 class="mb-4 mt-4">Add New Question</h3>
-        <input id="newQTitle" type="text" placeholder="Question Title" />
-        <textarea id="newQSlides" rows="6" placeholder='[{"type":"text", "content":"Question?"}, {"type":"image", "content":"http..."}, {"type":"sound", "content":"http..."}, {"type":"html", "content":"<marquee>Animated!</marquee>"}]'></textarea>
-        <button class="btn btn-secondary mt-2" style="width:100%" onclick="addNewQuestion()">Save Custom Question</button>
+        <h3 class="mb-4 mt-4" style="color:var(--primary)">Presentation Editor (Canvas)</h3>
+        <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:10px">Build questions like a real presentation. Add text, images, and position them on the canvas.</p>
         
+        <div style="display:flex; gap:20px; background:var(--bg-panel); border:1px solid rgba(255,255,255,0.1); border-radius:12px; overflow:hidden">
+          
+          <!-- Slide Thumbnail Sidebar -->
+          <div style="width:200px; background:rgba(0,0,0,0.3); padding:15px; border-right:1px solid rgba(255,255,255,0.1); display:flex; flex-direction:column; gap:10px;">
+            <input type="text" id="newCanvasQTitle" placeholder="Question Title" style="width:100%; padding:5px; margin-bottom:10px;">
+            <button class="btn btn-primary" onclick="alert('Creating question...')">Create Question</button>
+            <hr style="border:0; border-top:1px solid rgba(255,255,255,0.1); margin:10px 0">
+            <button class="btn btn-secondary" onclick="alert('Adding slide...')">+ New Slide</button>
+            <div id="slide-thumbnails" style="display:flex; flex-direction:column; gap:10px; flex:1; overflow-y:auto">
+              <div style="text-align:center; color:var(--text-secondary); padding:20px">No slides yet.</div>
+            </div>
+          </div>
+
+          <!-- Canvas Area -->
+          <div style="flex:1; padding:20px; display:flex; flex-direction:column;">
+            <div style="display:flex; gap:10px; margin-bottom:15px; padding-bottom:15px; border-bottom:1px solid rgba(255,255,255,0.1)">
+              <button class="btn btn-secondary" onclick="alert('Add text')">📄 Text</button>
+              <button class="btn btn-secondary" onclick="alert('Add image')">🖼️ Image</button>
+              <button class="btn btn-secondary" onclick="alert('Add audio')">🎵 Audio</button>
+              <button class="btn btn-success" style="margin-left:auto" onclick="alert('Saving slide...')">💾 Save Slide</button>
+            </div>
+            
+            <div style="position:relative; width:100%; aspect-ratio:16/9; background:#000; border:2px dashed rgba(255,255,255,0.2); border-radius:8px; overflow:hidden; display:flex; align-items:center; justify-content:center">
+              <span style="color:var(--text-secondary)">Canvas Editor (Select a slide to edit)</span>
+            </div>
+            
+            <div style="margin-top:15px; padding:15px; background:rgba(0,0,0,0.3); border-radius:8px;">
+              <h4 style="margin:0 0 10px 0; font-size:1rem; color:var(--primary)">Element Properties</h4>
+              <div style="display:flex; gap:15px">
+                <div><label style="font-size:0.8rem; color:var(--text-secondary)">X Pos</label><input type="number" style="width:70px; margin:0"></div>
+                <div><label style="font-size:0.8rem; color:var(--text-secondary)">Y Pos</label><input type="number" style="width:70px; margin:0"></div>
+                <div><label style="font-size:0.8rem; color:var(--text-secondary)">Width</label><input type="number" style="width:70px; margin:0"></div>
+                <div><label style="font-size:0.8rem; color:var(--text-secondary)">Animation</label>
+                  <select style="margin:0"><option>None</option><option>Fade In</option><option>Slide Up</option></select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <h3 class="mb-4 mt-4" style="color:var(--warning)">Projector Control</h3>
+        <div style="display:flex; gap:10px; margin-bottom: 20px">
+          <select id="qSelect" class="custom-select" style="margin:0; flex:1; background:var(--bg-panel); color:white; border:1px solid rgba(255,255,255,0.2); padding:10px; border-radius:6px">
+            <option value="">-- Select Question --</option>
+            ${globalState.questions.map(q => `<option value="${q.id}" ${q.id === st.currentQuestionId ? 'selected' : ''}>${q.title}</option>`).join('')}
+          </select>
+          <button class="btn btn-primary" onclick="setQuestion()">SET QUESTION</button>
+        </div>
+        <div style="display:flex; gap:10px; justify-content:center">
+          <button class="btn btn-secondary" onclick="prevSlide()">Prev Slide</button>
+          <button class="btn btn-secondary" onclick="nextSlide()">Next Slide</button>
+        </div>
+        <div class="text-center mt-4">Current Slide Index: ${st.currentSlideIndex + 1}</div>
+        
+        <hr style="margin:40px 0; border:0; border-top:1px solid rgba(255,255,255,0.1)">
         <button class="btn btn-secondary mt-4" style="width:100%" onclick="addDemoQuestion()">Add Demo Question</button>
         <button class="btn btn-danger mt-4" style="width:100%" onclick="resetGame()">Reset Game Data</button>
       </div>

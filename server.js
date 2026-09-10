@@ -44,49 +44,26 @@ app.post('/api/teams/join', async (req, res) => {
       if (t.team_name.toLowerCase() === teamName.toLowerCase()) {
         // Re-joining their own team
         existingTeam = t;
-        nameAlreadyUsed = false;
-      } else {
-        // Username taken by another team
-        nameAlreadyUsed = true;
-      }
-    }
-    if (t.team_name.toLowerCase() === teamName.toLowerCase()) {
-      existingTeam = t;
-    }
-  }
+  
+  if (!memberName || !teamName) return res.status(400).json({ ok: false, message: 'Name and Team required' });
 
-  if (nameAlreadyUsed) {
-    return res.status(400).json({ ok: false, message: 'This username is already taken by someone else.' });
-  }
-
+  // 1. Find or create the team
+  let team;
+  const { data: existingTeam, error: teamErr } = await supabase.from('teams').select('*').eq('team_name', teamName).single();
+  
   if (existingTeam) {
-    const members = existingTeam.member_name.split(', ').map(n => n.toLowerCase());
-    if (!members.includes(memberName.toLowerCase())) {
-      // Add new member to existing team
-      const newMemberName = existingTeam.member_name + ', ' + memberName;
-      const { data, error } = await supabase
-        .from('teams')
-        .update({ member_name: newMemberName })
-        .eq('id', existingTeam.id)
-        .select()
-        .single();
-      if (error) return res.status(500).json({ ok: false, message: error.message });
-      return res.json({ ok: true, team: { id: data.id, memberName: data.member_name, teamName: data.team_name, score: data.score, assignedRound: data.assigned_round, assignedBatch: data.assigned_batch } });
-    } else {
-      // Re-joining with same name
-      return res.json({ ok: true, team: { id: existingTeam.id, memberName: existingTeam.member_name, teamName: existingTeam.team_name, score: existingTeam.score, assignedRound: existingTeam.assigned_round, assignedBatch: existingTeam.assigned_batch } });
-    }
+    team = existingTeam;
   } else {
-    // Create entirely new team
-    const { data, error } = await supabase
-      .from('teams')
-      .insert([{ member_name: memberName, team_name: teamName }])
-      .select()
-      .single();
-
-    if (error) return res.status(500).json({ ok: false, message: error.message });
-    res.json({ ok: true, team: { id: data.id, memberName: data.member_name, teamName: data.team_name, score: data.score, assignedRound: data.assigned_round, assignedBatch: data.assigned_batch } });
+    const { data: newTeam, error: newTeamErr } = await supabase.from('teams').insert([{ team_name: teamName }]).select().single();
+    if (newTeamErr) return res.status(500).json({ ok: false, message: newTeamErr.message });
+    team = newTeam;
   }
+
+  // 2. Insert member into team_members
+  const { error: memberErr } = await supabase.from('team_members').insert([{ team_id: team.id, member_name: memberName }]);
+  if (memberErr) return res.status(500).json({ ok: false, message: memberErr.message });
+
+  res.json({ ok: true, team: { id: team.id, teamName: team.team_name, score: team.score, assignedRound: team.assigned_round, assignedBatch: team.assigned_batch } });
 });
 
 app.post('/api/buzz', async (req, res) => {
@@ -228,15 +205,34 @@ app.delete('/api/teams/:id', async (req, res) => {
 });
 
 app.post('/api/questions', async (req, res) => {
-  const { title, slides } = req.body; 
-  const { data, error } = await supabase
-    .from('questions')
-    .insert([{ title, slides: slides || [] }])
-    .select()
-    .single();
-
+  const { title } = req.body;
+  const { data, error } = await supabase.from('questions').insert([{ title }]).select().single();
   if (error) return res.status(500).json({ ok: false, message: error.message });
   res.json({ ok: true, question: data });
+});
+
+app.post('/api/slides', async (req, res) => {
+  const { questionId, slideOrder, background, transition } = req.body;
+  const { data, error } = await supabase.from('slides').insert([{ 
+    question_id: questionId, slide_order: slideOrder, background, transition 
+  }]).select().single();
+  if (error) return res.status(500).json({ ok: false, message: error.message });
+  res.json({ ok: true, slide: data });
+});
+
+app.post('/api/slide-elements', async (req, res) => {
+  const { slideId, elementType, content, posX, posY, sizeW, sizeH, animation, order } = req.body;
+  const { data, error } = await supabase.from('slide_elements').insert([{
+    slide_id: slideId, element_type: elementType, content, position_x: posX, position_y: posY, size_width: sizeW, size_height: sizeH, animation, element_order: order
+  }]).select().single();
+  if (error) return res.status(500).json({ ok: false, message: error.message });
+  res.json({ ok: true, element: data });
+});
+
+app.post('/api/delete-question', async (req, res) => {
+  const { id } = req.body;
+  await supabase.from('questions').delete().eq('id', id);
+  res.json({ ok: true });
 });
 
 app.post('/api/reset-data', async (req, res) => {
@@ -259,16 +255,22 @@ app.post('/api/reset-data', async (req, res) => {
 
 app.get('/api/initial-state', async (req, res) => {
   // Fetch initial data for clients who just connected
-  const [teamsRes, questionsRes, stateRes] = await Promise.all([
+  const [teamsRes, membersRes, questionsRes, slidesRes, elementsRes, stateRes] = await Promise.all([
     supabase.from('teams').select('*').order('joined_at', { ascending: true }),
+    supabase.from('team_members').select('*'),
     supabase.from('questions').select('*').order('id', { ascending: true }),
+    supabase.from('slides').select('*').order('slide_order', { ascending: true }),
+    supabase.from('slide_elements').select('*').order('element_order', { ascending: true }),
     supabase.from('game_state').select('*').eq('id', 1).single()
   ]);
 
   res.json({
     ok: true,
     teams: teamsRes.data || [],
+    teamMembers: membersRes.data || [],
     questions: questionsRes.data || [],
+    slides: slidesRes.data || [],
+    slideElements: elementsRes.data || [],
     state: stateRes.data || {}
   });
 });
