@@ -122,6 +122,7 @@ function renderPlayerJoin() {
   app.innerHTML = `
     <div class="join-container panel">
       <h2 class="text-center mb-4">Join Quiz</h2>
+      <div id="joinError" style="color: #ef4444; margin-bottom: 15px; text-align: center; display: none;"></div>
       <input id="memberName" type="text" placeholder="Your Name" />
       <input id="teamName" type="text" placeholder="Team Name" />
       <button class="btn" style="width:100%" onclick="joinTeam()">JOIN GAME</button>
@@ -130,14 +131,27 @@ function renderPlayerJoin() {
 }
 
 async function joinTeam() {
-  const memberName = document.getElementById('memberName').value;
-  const teamName = document.getElementById('teamName').value;
+  const memberName = document.getElementById('memberName').value.trim();
+  const teamName = document.getElementById('teamName').value.trim();
+  const errorEl = document.getElementById('joinError');
+  
+  if (!memberName || !teamName) {
+    errorEl.textContent = "Please enter both Your Name and Team Name.";
+    errorEl.style.display = "block";
+    return;
+  }
+  
+  errorEl.style.display = "none";
+  
   try {
     const res = await apiCall('/api/teams/join', 'POST', { memberName, teamName });
     globalState.myTeam = res.team;
     localStorage.setItem('myTeam', JSON.stringify(res.team));
     render();
-  } catch(e) { alert(e.message); }
+  } catch(e) { 
+    errorEl.textContent = e.message;
+    errorEl.style.display = "block";
+  }
 }
 
 function renderPlayerDashboard() {
