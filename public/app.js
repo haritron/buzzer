@@ -29,14 +29,17 @@ if (window.supabase) {
 async function initApp() {
   try {
     const res = await apiCall('/api/initial-state', 'GET');
-    globalState.teams = res.teams.map(t => ({id: t.id, memberName: t.member_name, teamName: t.team_name, score: t.score}));
+    globalState.teams = res.teams.map(t => ({id: t.id, memberName: t.member_name, teamName: t.team_name, score: t.score, assignedRound: t.assigned_round, assignedBatch: t.assigned_batch}));
     globalState.questions = res.questions;
     globalState.state = {
       buzzerLocked: res.state.buzzer_locked,
       buzzedTeamId: res.state.buzzed_team_id,
       currentQuestionId: res.state.current_question_id,
       currentSlideIndex: res.state.current_slide_index || 0,
-      flashEvent: res.state.flash_type ? { type: res.state.flash_type, timestamp: res.state.flash_timestamp } : null
+      flashEvent: res.state.flash_type ? { type: res.state.flash_type, timestamp: res.state.flash_timestamp } : null,
+      activeRound: res.state.active_round || 1,
+      activeBatch: res.state.active_batch || 1,
+      tournamentConfig: res.state.tournament_config || { rounds: [] }
     };
     globalState.isLoaded = true;
     render();
@@ -54,6 +57,9 @@ async function initApp() {
         globalState.state.currentQuestionId = row.current_question_id;
         globalState.state.currentSlideIndex = row.current_slide_index || 0;
         globalState.state.flashEvent = row.flash_type ? { type: row.flash_type, timestamp: row.flash_timestamp } : null;
+        globalState.state.activeRound = row.active_round || 1;
+        globalState.state.activeBatch = row.active_batch || 1;
+        globalState.state.tournamentConfig = row.tournament_config || { rounds: [] };
         
         if (globalState.state.flashEvent && (!oldFlash || oldFlash.timestamp !== globalState.state.flashEvent.timestamp)) {
           triggerFlash(globalState.state.flashEvent.type);
@@ -62,13 +68,15 @@ async function initApp() {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'teams' }, payload => {
         if (payload.eventType === 'INSERT') {
-          globalState.teams.push({ id: payload.new.id, memberName: payload.new.member_name, teamName: payload.new.team_name, score: payload.new.score });
+          globalState.teams.push({ id: payload.new.id, memberName: payload.new.member_name, teamName: payload.new.team_name, score: payload.new.score, assignedRound: payload.new.assigned_round, assignedBatch: payload.new.assigned_batch });
         } else if (payload.eventType === 'UPDATE') {
           const idx = globalState.teams.findIndex(t => t.id === payload.new.id);
           if (idx !== -1) {
             globalState.teams[idx].score = payload.new.score;
             globalState.teams[idx].memberName = payload.new.member_name;
             globalState.teams[idx].teamName = payload.new.team_name;
+            globalState.teams[idx].assignedRound = payload.new.assigned_round;
+            globalState.teams[idx].assignedBatch = payload.new.assigned_batch;
           }
         } else if (payload.eventType === 'DELETE') {
           globalState.teams = globalState.teams.filter(t => t.id !== payload.old.id);
@@ -197,18 +205,23 @@ function renderPlayerDashboard() {
     return renderPlayerJoin();
   }
 
-  const locked = globalState.state.buzzerLocked;
+  const isMyTurn = myTeamData.assignedRound === globalState.state.activeRound && myTeamData.assignedBatch === globalState.state.activeBatch;
+  const locked = globalState.state.buzzerLocked || !isMyTurn;
   const isMeBuzzed = globalState.state.buzzedTeamId === myTeamData.id;
   const isSomeoneElse = globalState.state.buzzedTeamId && !isMeBuzzed;
 
   let btnText = 'BUZZ';
   let btnClass = '';
-  if (locked && !globalState.state.buzzedTeamId) btnText = 'LOCKED';
+  if (!isMyTurn) { btnText = 'NOT YOUR BATCH'; btnClass = ''; }
+  else if (locked && !globalState.state.buzzedTeamId) btnText = 'LOCKED';
   if (isMeBuzzed) { btnText = 'BUZZED!'; btnClass = 'pressed'; }
   if (isSomeoneElse) btnText = 'TOO LATE';
 
   app.innerHTML = `
     <div class="player-dashboard">
+      <div style="background: rgba(255,255,255,0.1); padding: 5px 15px; border-radius: 20px; font-size: 0.9rem; margin-bottom: 15px; color: var(--text-secondary)">
+        Round ${globalState.state.activeRound} • Batch ${globalState.state.activeBatch}
+      </div>
       <h2>${myTeamData.teamName} <small style="color:var(--text-secondary)">(${myTeamData.memberName})</small></h2>
       <div class="score-display">Score: ${myTeamData.score}</div>
       <button 
@@ -275,6 +288,10 @@ function renderAdminDashboard() {
               <div>
                 <strong>${t.teamName}</strong> <br/>
                 <small>${t.memberName}</small>
+                <div style="margin-top:5px; font-size:0.8rem; display:flex; align-items:center; gap:5px;">
+                  R: <input type="number" value="${t.assignedRound || 1}" onchange="assignTeam('${t.id}', this.value, ${t.assignedBatch || 1})" style="width:40px; padding:2px; margin:0; background:var(--bg-panel); color:white; border:1px solid rgba(255,255,255,0.2);">
+                  B: <input type="number" value="${t.assignedBatch || 1}" onchange="assignTeam('${t.id}', ${t.assignedRound || 1}, this.value)" style="width:40px; padding:2px; margin:0; background:var(--bg-panel); color:white; border:1px solid rgba(255,255,255,0.2);">
+                </div>
               </div>
               <div class="score-controls">
                 <button class="btn btn-secondary" onclick="changeScore('${t.id}', -10)">-10</button>
@@ -291,7 +308,16 @@ function renderAdminDashboard() {
         <h3 class="mb-4">Controls</h3>
         
         <div style="background:rgba(0,0,0,0.3); padding:20px; border-radius:12px; margin-bottom:20px; text-align:center">
-          <div style="font-size:1.2rem; margin-bottom:10px">Buzzer Status: 
+          <div style="font-size:1.2rem; margin-bottom:10px">Active Match: 
+            <strong>Round ${st.activeRound} • Batch ${st.activeBatch}</strong>
+          </div>
+          <div style="display:flex; gap:10px; justify-content:center; margin-bottom:20px">
+            <input type="number" id="setRound" value="${st.activeRound}" min="1" style="width:70px; margin:0; padding:5px" title="Round" />
+            <input type="number" id="setBatch" value="${st.activeBatch}" min="1" style="width:70px; margin:0; padding:5px" title="Batch" />
+            <button class="btn btn-secondary" onclick="updateActiveMatch()" style="padding:5px 15px">SET MATCH</button>
+          </div>
+          
+          <div style="font-size:1.2rem; margin-bottom:10px; border-top:1px solid rgba(255,255,255,0.1); padding-top:20px;">Buzzer Status: 
             <span class="status-indicator ${st.buzzerLocked ? 'locked' : 'unlocked'}">${st.buzzerLocked ? 'LOCKED' : 'UNLOCKED'}</span>
           </div>
           ${buzzedTeam ? `<h1 style="color:var(--warning); margin: 20px 0">${buzzedTeam.teamName} BUZZED!</h1>` : ''}
@@ -318,11 +344,17 @@ function renderAdminDashboard() {
         </div>
         <div class="text-center mt-4">Current Slide: ${st.currentSlideIndex + 1}</div>
 
-        <h3 class="mb-4 mt-4">Manual Flash (Shortcuts: Ctrl+Shift+G / Ctrl+Shift+T)</h3>
+        <h3 class="mb-4 mt-4">Manual Flash & Auto-Score</h3>
+        <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:10px">Clicking these will flash the screen AND auto-apply positive/negative points to the buzzed team based on your Tournament Settings.</p>
         <div style="display:flex; gap:10px;">
           <button class="btn btn-success" style="flex:1" onclick="flash('green')">CORRECT (Green)</button>
           <button class="btn btn-danger" style="flex:1" onclick="flash('red')">INCORRECT (Red)</button>
         </div>
+
+        <h3 class="mb-4 mt-4">Tournament Settings (JSON)</h3>
+        <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:10px">Configure rules. Set <code>timeBasedDecay</code> to true for answering speed bonuses!</p>
+        <textarea id="tournamentConfig" rows="8" style="font-family:monospace; font-size:0.8rem" placeholder='{"rounds":[{"roundNumber":1, "pointsSetting":{"positiveBase":10, "negativeBase":-5, "timeBasedDecay":true, "maxTimeBonus":5}}]}'>${JSON.stringify(st.tournamentConfig, null, 2)}</textarea>
+        <button class="btn btn-secondary mt-2" style="width:100%" onclick="saveTournamentConfig()">Save Config</button>
 
         <h3 class="mb-4 mt-4">Add New Question</h3>
         <input id="newQTitle" type="text" placeholder="Question Title" />
@@ -364,8 +396,25 @@ async function nextSlide() {
   await apiCall('/api/admin/state', 'POST', { currentSlideIndex: i });
 }
 async function resetGame() {
-  if(confirm('Are you sure? This deletes all teams and scores.')){
+  if(confirm('Are you sure? This deletes all teams and resets game state.')){
     await apiCall('/api/reset-data', 'POST');
+  }
+}
+async function updateActiveMatch() {
+  const r = parseInt(document.getElementById('setRound').value);
+  const b = parseInt(document.getElementById('setBatch').value);
+  await apiCall('/api/admin/state', 'POST', { activeRound: r, activeBatch: b, buzzerLocked: true, buzzedTeamId: null });
+}
+async function assignTeam(teamId, r, b) {
+  await apiCall('/api/admin/team-assign', 'POST', { teamId, assignedRound: parseInt(r), assignedBatch: parseInt(b) });
+}
+async function saveTournamentConfig() {
+  try {
+    const config = JSON.parse(document.getElementById('tournamentConfig').value);
+    await apiCall('/api/admin/state', 'POST', { tournamentConfig: config });
+    alert('Config Saved!');
+  } catch(e) { 
+    alert('Invalid JSON formatting in Tournament Settings!'); 
   }
 }
 async function addDemoQuestion() {
@@ -438,6 +487,10 @@ function renderDisplay() {
     <div class="display-container">
       <div id="flashOverlay" class="flash-overlay"></div>
       
+      <div style="position:absolute; top:20px; right:30px; font-size:1.5rem; color:rgba(255,255,255,0.5); font-weight:bold;">
+        Round ${st.activeRound} • Batch ${st.activeBatch}
+      </div>
+
       ${slideHtml || '<div class="question-slide" style="color:var(--text-secondary)">Waiting for question...</div>'}
       
       <div class="buzzer-overlay ${buzzedTeam ? 'show' : ''}">

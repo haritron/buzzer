@@ -71,10 +71,10 @@ app.post('/api/teams/join', async (req, res) => {
         .select()
         .single();
       if (error) return res.status(500).json({ ok: false, message: error.message });
-      return res.json({ ok: true, team: { id: data.id, memberName: data.member_name, teamName: data.team_name, score: data.score } });
+      return res.json({ ok: true, team: { id: data.id, memberName: data.member_name, teamName: data.team_name, score: data.score, assignedRound: data.assigned_round, assignedBatch: data.assigned_batch } });
     } else {
       // Re-joining with same name
-      return res.json({ ok: true, team: { id: existingTeam.id, memberName: existingTeam.member_name, teamName: existingTeam.team_name, score: existingTeam.score } });
+      return res.json({ ok: true, team: { id: existingTeam.id, memberName: existingTeam.member_name, teamName: existingTeam.team_name, score: existingTeam.score, assignedRound: existingTeam.assigned_round, assignedBatch: existingTeam.assigned_batch } });
     }
   } else {
     // Create entirely new team
@@ -85,7 +85,7 @@ app.post('/api/teams/join', async (req, res) => {
       .single();
 
     if (error) return res.status(500).json({ ok: false, message: error.message });
-    res.json({ ok: true, team: { id: data.id, memberName: data.member_name, teamName: data.team_name, score: data.score } });
+    res.json({ ok: true, team: { id: data.id, memberName: data.member_name, teamName: data.team_name, score: data.score, assignedRound: data.assigned_round, assignedBatch: data.assigned_batch } });
   }
 });
 
@@ -120,13 +120,22 @@ app.post('/api/admin/state', async (req, res) => {
   const newState = req.body;
   
   const updateData = { flash_type: null, flash_timestamp: null };
-  if (newState.buzzerLocked !== undefined) updateData.buzzer_locked = newState.buzzerLocked;
+  if (newState.buzzerLocked !== undefined) {
+    updateData.buzzer_locked = newState.buzzerLocked;
+    if (newState.buzzerLocked === false) {
+      updateData.buzzer_unlocked_at = Date.now();
+    }
+  }
   if (newState.buzzedTeamId === null) {
     updateData.buzzed_team_id = null;
     updateData.buzzed_at = null;
   }
   if (newState.currentQuestionId !== undefined) updateData.current_question_id = newState.currentQuestionId;
   if (newState.currentSlideIndex !== undefined) updateData.current_slide_index = newState.currentSlideIndex;
+  
+  if (newState.activeRound !== undefined) updateData.active_round = newState.activeRound;
+  if (newState.activeBatch !== undefined) updateData.active_batch = newState.activeBatch;
+  if (newState.tournamentConfig !== undefined) updateData.tournament_config = newState.tournamentConfig;
 
   const { error } = await supabase
     .from('game_state')
@@ -140,6 +149,42 @@ app.post('/api/admin/state', async (req, res) => {
 app.post('/api/admin/flash', async (req, res) => {
   const { type } = req.body; // 'green' or 'red'
   
+  const { data: state, error: errState } = await supabase.from('game_state').select('*').eq('id', 1).single();
+  if (errState) return res.status(500).json({ ok: false, message: errState.message });
+
+  // Auto-score logic based on rules
+  if (state.buzzed_team_id) {
+    const config = state.tournament_config || {};
+    const rounds = config.rounds || [];
+    const activeRoundCfg = rounds.find(r => r.roundNumber === state.active_round) || {
+      pointsSetting: { positiveBase: 10, negativeBase: -10, timeBasedDecay: false, maxTimeBonus: 0 }
+    };
+    
+    let scoreChange = 0;
+    const rules = activeRoundCfg.pointsSetting || { positiveBase: 10, negativeBase: -10, timeBasedDecay: false, maxTimeBonus: 0 };
+
+    if (type === 'green') {
+      scoreChange = parseInt(rules.positiveBase) || 0;
+      if (rules.timeBasedDecay && state.buzzer_unlocked_at && state.buzzed_at) {
+        const timeTakenMs = new Date(state.buzzed_at).getTime() - parseInt(state.buzzer_unlocked_at);
+        const maxBonus = parseInt(rules.maxTimeBonus) || 0;
+        let bonus = Math.floor(maxBonus * (1 - (timeTakenMs / 10000)));
+        if (bonus < 0) bonus = 0;
+        if (bonus > maxBonus) bonus = maxBonus;
+        scoreChange += bonus;
+      }
+    } else if (type === 'red') {
+      scoreChange = parseInt(rules.negativeBase) || 0;
+    }
+
+    if (scoreChange !== 0) {
+      const { data: teamData } = await supabase.from('teams').select('score').eq('id', state.buzzed_team_id).single();
+      if (teamData) {
+        await supabase.from('teams').update({ score: teamData.score + scoreChange }).eq('id', state.buzzed_team_id);
+      }
+    }
+  }
+
   const { error } = await supabase
     .from('game_state')
     .update({ 
@@ -148,6 +193,15 @@ app.post('/api/admin/flash', async (req, res) => {
     })
     .eq('id', 1);
 
+  if (error) return res.status(500).json({ ok: false, message: error.message });
+  res.json({ ok: true });
+});
+
+app.post('/api/admin/team-assign', async (req, res) => {
+  const { teamId, assignedRound, assignedBatch } = req.body;
+  const { error } = await supabase.from('teams')
+    .update({ assigned_round: assignedRound, assigned_batch: assignedBatch })
+    .eq('id', teamId);
   if (error) return res.status(500).json({ ok: false, message: error.message });
   res.json({ ok: true });
 });
@@ -195,7 +249,9 @@ app.post('/api/reset-data', async (req, res) => {
     current_question_id: null,
     current_slide_index: 0,
     flash_type: null,
-    flash_timestamp: null
+    flash_timestamp: null,
+    active_round: 1,
+    active_batch: 1
   }).eq('id', 1);
 
   res.json({ ok: true });

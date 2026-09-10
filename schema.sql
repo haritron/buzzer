@@ -9,7 +9,9 @@ CREATE TABLE teams (
     member_name TEXT NOT NULL,
     team_name TEXT NOT NULL,
     score INTEGER DEFAULT 0,
-    joined_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    joined_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    assigned_round INTEGER DEFAULT 1,
+    assigned_batch INTEGER DEFAULT 1
 );
 
 -- Create Questions table
@@ -28,7 +30,11 @@ CREATE TABLE game_state (
     current_question_id UUID REFERENCES questions(id) ON DELETE SET NULL,
     current_slide_index INTEGER DEFAULT 0,
     flash_type TEXT, -- 'green' or 'red'
-    flash_timestamp BIGINT
+    flash_timestamp BIGINT,
+    tournament_config JSONB DEFAULT '{}'::jsonb,
+    active_round INTEGER DEFAULT 1,
+    active_batch INTEGER DEFAULT 1,
+    buzzer_unlocked_at BIGINT
 );
 
 -- Insert the default singleton row for game_state
