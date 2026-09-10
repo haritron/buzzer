@@ -138,6 +138,7 @@ async function joinTeam() {
   const memberName = document.getElementById('memberName').value.trim();
   const teamName = document.getElementById('teamName').value.trim();
   const errorEl = document.getElementById('joinError');
+  const joinBtn = document.querySelector('.join-container button');
   
   if (!memberName || !teamName) {
     errorEl.textContent = "Please enter both Your Name and Team Name.";
@@ -147,6 +148,14 @@ async function joinTeam() {
   
   errorEl.style.display = "none";
   
+  // Disable button to prevent multiple clicks while waiting for the server
+  if (joinBtn) {
+    joinBtn.disabled = true;
+    joinBtn.textContent = "Joining...";
+    joinBtn.style.opacity = "0.7";
+    joinBtn.style.cursor = "not-allowed";
+  }
+  
   try {
     const res = await apiCall('/api/teams/join', 'POST', { memberName, teamName });
     globalState.myTeam = res.team;
@@ -155,6 +164,14 @@ async function joinTeam() {
   } catch(e) { 
     errorEl.textContent = e.message;
     errorEl.style.display = "block";
+    
+    // Re-enable button if there's an error so they can try again
+    if (joinBtn) {
+      joinBtn.disabled = false;
+      joinBtn.textContent = "JOIN GAME";
+      joinBtn.style.opacity = "1";
+      joinBtn.style.cursor = "pointer";
+    }
   }
 }
 
