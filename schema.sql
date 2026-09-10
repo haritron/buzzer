@@ -19,7 +19,7 @@ CREATE TABLE teams (
 -- 2. TEAM MEMBERS (Many-to-One)
 CREATE TABLE team_members (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+    team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
     member_name TEXT NOT NULL
 );
 
@@ -33,24 +33,21 @@ CREATE TABLE questions (
 -- 4. SLIDES
 CREATE TABLE slides (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    question_id UUID REFERENCES questions(id) ON DELETE CASCADE,
+    question_id UUID NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
     slide_order INTEGER NOT NULL,
     background TEXT,
-    transition TEXT
+    transition TEXT,
+    UNIQUE(question_id, slide_order) -- Proper constraint: unique slide order per question
 );
 
 -- 5. SLIDE ELEMENTS (The Canvas Elements)
 CREATE TABLE slide_elements (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    slide_id UUID REFERENCES slides(id) ON DELETE CASCADE,
+    slide_id UUID NOT NULL REFERENCES slides(id) ON DELETE CASCADE,
     element_type TEXT NOT NULL, -- 'text', 'image', 'audio', 'video'
     content TEXT NOT NULL, -- Text string or Supabase Storage URL
-    position_x INTEGER DEFAULT 0,
-    position_y INTEGER DEFAULT 0,
-    size_width INTEGER,
-    size_height INTEGER,
-    animation TEXT,
-    element_order INTEGER DEFAULT 0
+    element_order INTEGER NOT NULL DEFAULT 0, -- Layer ordering
+    properties JSONB DEFAULT '{}'::jsonb -- JSONB for flexible advanced configuration (x, y, width, height, color, animation)
 );
 
 -- 6. GAME STATE

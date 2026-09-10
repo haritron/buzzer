@@ -221,12 +221,19 @@ app.post('/api/slides', async (req, res) => {
 });
 
 app.post('/api/slide-elements', async (req, res) => {
-  const { slideId, elementType, content, posX, posY, sizeW, sizeH, animation, order } = req.body;
+  const { slideId, elementType, content, properties, order } = req.body;
   const { data, error } = await supabase.from('slide_elements').insert([{
-    slide_id: slideId, element_type: elementType, content, position_x: posX, position_y: posY, size_width: sizeW, size_height: sizeH, animation, element_order: order
+    slide_id: slideId, element_type: elementType, content, properties: properties || {}, element_order: order
   }]).select().single();
   if (error) return res.status(500).json({ ok: false, message: error.message });
   res.json({ ok: true, element: data });
+});
+
+app.post('/api/slide-elements/clear', async (req, res) => {
+  const { slideId } = req.body;
+  const { error } = await supabase.from('slide_elements').delete().eq('slide_id', slideId);
+  if (error) return res.status(500).json({ ok: false, message: error.message });
+  res.json({ ok: true });
 });
 
 app.post('/api/delete-question', async (req, res) => {
