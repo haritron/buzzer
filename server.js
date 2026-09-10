@@ -29,21 +29,6 @@ app.post('/api/admin/login', (req, res) => {
 
 app.post('/api/teams/join', async (req, res) => {
   const { memberName, teamName } = req.body;
-  if (!memberName || !teamName) return res.status(400).json({ ok: false, message: 'Missing fields' });
-  
-  // Fetch all existing teams to check for username usage and existing team names
-  const { data: existingTeams, error: errMem } = await supabase.from('teams').select('*');
-  if (errMem) return res.status(500).json({ ok: false, message: errMem.message });
-
-  let existingTeam = null;
-  let nameAlreadyUsed = false;
-  
-  for (const t of existingTeams) {
-    const members = t.member_name.split(', ').map(n => n.toLowerCase());
-    if (members.includes(memberName.toLowerCase())) {
-      if (t.team_name.toLowerCase() === teamName.toLowerCase()) {
-        // Re-joining their own team
-        existingTeam = t;
   
   if (!memberName || !teamName) return res.status(400).json({ ok: false, message: 'Name and Team required' });
 

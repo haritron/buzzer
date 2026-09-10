@@ -24,6 +24,22 @@
       "dest": "/public/app.js"
     },
     {
+      "src": "/slideManager.js",
+      "dest": "/public/slideManager.js"
+    },
+    {
+      "src": "/slideRenderer.js",
+      "dest": "/public/slideRenderer.js"
+    },
+    {
+      "src": "/editor.js",
+      "dest": "/public/editor.js"
+    },
+    {
+      "src": "/ranking.html",
+      "dest": "/public/ranking.html"
+    },
+    {
       "src": "/(.*)",
       "dest": "/public/index.html"
     }
