@@ -365,12 +365,13 @@ window.saveVisualConfig = async function() {
 };
 
 function generateBatchOptions(selectedRound, selectedBatch) {
-  const config = globalState.state.tournamentConfig || { rounds: [] };
+  const config = globalState.state.tournamentConfig || {};
+  const rounds = config.rounds || [];
   let optionsHtml = '';
-  if (config.rounds.length === 0) {
+  if (rounds.length === 0) {
     return `<option value="1-1">Round 1 - Batch 1</option>`;
   }
-  config.rounds.forEach(r => {
+  rounds.forEach(r => {
     for (let b = 1; b <= (r.batches || 1); b++) {
       const isSelected = (r.roundNumber == selectedRound && b == selectedBatch) ? 'selected' : '';
       optionsHtml += `<option value="${r.roundNumber}-${b}" ${isSelected}>Round ${r.roundNumber} - Batch ${b}</option>`;
