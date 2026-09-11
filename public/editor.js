@@ -80,7 +80,9 @@ const Editor = {
       globalState.questions.push(res.question);
       document.getElementById('newCanvasQTitle').value = '';
       this.selectQuestion(res.question.id);
-      window.renderApp(); // Update dropdowns elsewhere
+      if (window.renderApp) window.renderApp(); 
+    } else {
+      alert("Failed to create question: " + (res.message || "Unknown error"));
     }
   },
 
@@ -99,6 +101,8 @@ const Editor = {
       globalState.slides.push(res.slide);
       this.loadSlide(res.slide.id);
       this.renderQuestionThumbnails();
+    } else {
+      alert("Failed to create slide: " + (res.message || "Unknown error"));
     }
   },
 

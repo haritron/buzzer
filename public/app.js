@@ -112,6 +112,7 @@ function navigate(path) {
 
 window.addEventListener('popstate', render);
 
+window.renderApp = render;
 function render() {
   const path = window.location.pathname;
   app.innerHTML = '';
