@@ -139,6 +139,9 @@ function renderPlayerJoin() {
       <input id="memberName" type="text" placeholder="Your Name" />
       <input id="teamName" type="text" placeholder="Team Name" />
       <button class="btn" style="width:100%" onclick="joinTeam()">JOIN GAME</button>
+      <div style="margin-top: 15px; text-align: center;">
+        <a href="/linkup.html" style="color: var(--primary); text-decoration: none; font-size: 0.9rem;">Play "LinkUp" Connection Game instead &rarr;</a>
+      </div>
     </div>
   `;
 }
@@ -400,6 +403,7 @@ function renderAdminDashboard() {
       <div class="admin-header">
         <h2>Admin Dashboard</h2>
         <div>
+          <a href="/linkup.html" class="btn btn-primary" style="text-decoration:none; margin-right:8px;">Open LinkUp Game</a>
           <button class="btn btn-secondary" onclick="navigate('/display')" target="_blank">Open Display</button>
           <button class="btn btn-secondary" onclick="logout()">Logout</button>
         </div>

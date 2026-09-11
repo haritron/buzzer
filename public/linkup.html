@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>LinkUp | Connection Game</title>
+    <!-- Import Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+	<style>
+		:root {
+			--ink: #17212b;
+			--muted: #6d7781;
+			--paper: #f8f6f0;
+			--panel: #ffffff;
+			--line: #d9ddd9;
+			--teal: #087f79;
+			--teal-dark: #075b59;
+			--coral: #ef6e5b;
+			--yellow: #f7ca62;
+			--shadow: 0 18px 50px rgba(23, 33, 43, .10);
+		}
+		* { box-sizing: border-box; }
+		body { margin: 0; min-width: 320px; color: var(--ink); background: var(--paper); font-family: Georgia, 'Times New Roman', serif; }
+		button, input, textarea { font: inherit; }
+		button { cursor: pointer; border: 0; }
+		.app-shell { min-height: 100vh; display: flex; flex-direction: column; }
+		.topbar { height: 78px; padding: 0 5vw; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); background: rgba(248,246,240,.94); }
+		.brand { display: flex; align-items: center; gap: 12px; font-size: 25px; font-weight: bold; letter-spacing: -.5px; }
+		.brand-mark { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; color: white; background: var(--coral); font-family: Arial, sans-serif; font-size: 18px; }
+		.topbar-note { color: var(--muted); font-family: Arial, sans-serif; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+		.view { width: min(1180px, 90vw); margin: 0 auto; padding: 54px 0 70px; flex: 1; }
+		.view[hidden], .screen[hidden], .presenter[hidden] { display: none; }
+		.eyebrow { color: var(--teal); font-family: Arial, sans-serif; font-size: 12px; font-weight: bold; letter-spacing: .15em; text-transform: uppercase; }
+		h1 { margin: 10px 0 12px; max-width: 690px; font-size: clamp(42px, 6vw, 78px); line-height: .95; letter-spacing: -3px; }
+		h2 { margin: 0; font-size: 32px; letter-spacing: -1px; }
+		h3 { margin: 0; font-size: 20px; }
+		p { line-height: 1.55; }
+		.lede { max-width: 590px; margin: 0 0 32px; color: var(--muted); font-size: 18px; }
+		.role-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; max-width: 850px; }
+		.role-card { padding: 28px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: var(--shadow); }
+		.role-card h2 { margin-top: 14px; }
+		.role-card p { margin: 10px 0 22px; color: var(--muted); }
+		.role-icon { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 14px; color: white; background: var(--teal); font-family: Arial, sans-serif; font-size: 22px; }
+		.role-card:nth-child(2) .role-icon { background: var(--coral); }
+		.btn { padding: 13px 18px; border-radius: 4px; font-family: Arial, sans-serif; font-size: 13px; font-weight: bold; letter-spacing: .02em; transition: transform .15s, background .15s; }
+		.btn:hover { transform: translateY(-2px); }
+		.btn-primary { color: #fff; background: var(--teal); }
+		.btn-primary:hover { background: var(--teal-dark); }
+		.btn-coral { color: #fff; background: var(--coral); }
+		.btn-quiet { color: var(--ink); border: 1px solid var(--line); background: transparent; }
+		.btn-small { padding: 9px 12px; font-size: 11px; }
+		.field { display: grid; gap: 7px; margin: 16px 0; }
+		.field label { font-family: Arial, sans-serif; font-size: 12px; font-weight: bold; }
+		input, textarea { width: 100%; padding: 12px 13px; border: 1px solid var(--line); border-radius: 4px; color: var(--ink); background: #fdfdfb; outline: none; }
+		input:focus, textarea:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(8,127,121,.12); }
+		textarea { min-height: 98px; resize: vertical; }
+		.join-wrap { width: min(520px, 100%); margin: 20px auto 0; padding: 38px; border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); }
+		.join-wrap h1 { font-size: 52px; letter-spacing: -2px; }
+		.join-wrap .btn { width: 100%; margin-top: 8px; }
+		.back-link { display: inline-block; margin-bottom: 28px; color: var(--teal); font-family: Arial, sans-serif; font-size: 12px; font-weight: bold; cursor: pointer; }
+		.dashboard-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 34px; }
+		.dashboard-head h1 { font-size: 55px; }
+		.header-actions { display: flex; gap: 9px; }
+		.dashboard-grid { display: grid; grid-template-columns: 1.15fr .85fr; gap: 20px; align-items: start; }
+		.panel { padding: 26px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: var(--shadow); }
+		.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+		.panel-head span { color: var(--muted); font-family: Arial, sans-serif; font-size: 11px; font-weight: bold; letter-spacing: .1em; text-transform: uppercase; }
+		.round-list { display: grid; gap: 10px; }
+		.round-group { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--line); border-radius: 6px; background: #fbfcfa; }
+		.round-group-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 4px 7px; }
+		.round-group-head h3 { font-size: 18px; }
+		.round-group-head span { color: var(--muted); font-family: Arial, sans-serif; font-size: 11px; font-weight: bold; text-transform: uppercase; }
+		.round-group .round-item { background: var(--panel); }
+		.batch-group { display: grid; gap: 8px; padding: 10px; border-left: 3px solid var(--teal); background: #f2f8f5; }
+		.batch-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 2px 4px; }
+		.batch-head strong { font-family: Arial, sans-serif; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
+		.batch-head span { color: var(--muted); font-family: Arial, sans-serif; font-size: 11px; }
+		.round-item { display: flex; align-items: center; gap: 12px; padding: 13px; border: 1px solid var(--line); border-radius: 5px; cursor: pointer; }
+		.round-item[draggable="true"] { cursor: grab; }
+		.round-item.dragging { opacity: .45; border: 2px dashed var(--teal); }
+		.round-item.drag-over { border-color: var(--coral); background: #fff8f5; }
+		.drag-handle { color: var(--muted); font-family: Arial, sans-serif; font-size: 16px; letter-spacing: -3px; }
+		.round-item.active { border-color: var(--teal); background: #eff8f5; }
+		.round-number { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; color: white; background: var(--ink); font-family: Arial, sans-serif; font-size: 12px; }
+		.round-item.active .round-number { background: var(--teal); }
+		.round-summary { flex: 1; min-width: 0; font-weight: bold; }
+		.round-summary small { display: block; margin-top: 3px; color: var(--muted); font-family: Arial, sans-serif; font-size: 11px; font-weight: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+		.delete-round { color: var(--muted); background: transparent; font-family: Arial, sans-serif; font-size: 19px; }
+		.edit-round { color: var(--teal); background: transparent; font-family: Arial, sans-serif; font-size: 16px; }
+		.empty { padding: 34px 10px; color: var(--muted); text-align: center; }
+		.form-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 18px; }
+		.image-upload { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+		.upload-box { min-height: 126px; display: grid; place-items: center; align-content: center; gap: 7px; padding: 12px; border: 1px dashed #abbab5; border-radius: 5px; color: var(--muted); background: #f4faf7; text-align: center; cursor: pointer; font-family: Arial, sans-serif; font-size: 11px; }
+		.upload-box strong { color: var(--teal); font-size: 24px; }
+		.upload-box img { width: 100%; height: 98px; object-fit: contain; border-radius: 3px; background: #e8f0ed; }
+		.answer-upload { margin-top: 12px; }
+		.scoreboard { display: grid; gap: 10px; }
+		.team-row { display: flex; align-items: center; justify-content: space-between; padding: 14px; border: 1px solid var(--line); border-radius: 5px; }
+		.team-row strong { display: block; }
+		.team-row small { color: var(--muted); font-family: Arial, sans-serif; font-size: 11px; }
+		.score { color: var(--coral); font-size: 25px; font-weight: bold; }
+		.team-answer { margin-top: 8px; padding: 8px; border-radius: 4px; background: #f4f7f5; font-family: Arial, sans-serif; font-size: 12px; }
+		.answer-status { margin-left: 5px; font-size: 10px; font-weight: bold; text-transform: uppercase; }
+		.answer-status.correct { color: var(--teal); }
+		.answer-status.incorrect { color: var(--coral); }
+		.answer-actions { display: flex; gap: 5px; margin-top: 8px; }
+		.team-question { margin: 20px 0; padding: 18px; border-left: 4px solid var(--teal); background: #eff8f5; font-size: 25px; }
+		.team-answer-form { display: flex; gap: 8px; }
+		.team-answer-form input { flex: 1; }
+		.presenting .topbar { display: none; }
+		.presenter {
+			height: calc(100vh - 78px);
+			overflow: hidden;
+			display: grid;
+			place-items: center;
+			padding: 24px 4vw;
+			background: var(--presenter-bg, #132f32);
+			color: var(--presenter-text, #f6edda);
+			text-align: center;
+			--presenter-bg: #132f32;
+			--presenter-text: #f6edda;
+			--presenter-accent: #f7ca62;
+			--presenter-muted: rgba(246,237,218,.62);
+			--clue-bg: rgba(255,255,255,.08);
+			--clue-border: rgba(255,255,255,.85);
+			--clue-image-bg: rgba(255,255,255,.04);
+			--answer-box-bg: rgba(255,255,255,.08);
+			--answer-box-border: rgba(255,255,255,.25);
+			--button-border: rgba(255,255,255,.35);
+		}
+		.presenting .presenter { height: 100vh; }
+		.presenter-inner {
+			width: min(1400px, 100%);
+			height: 100%;
+			display: grid;
+			grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+			align-items: center;
+			justify-items: center;
+			gap: 8px;
+		}
+		.presenter .eyebrow { color: var(--presenter-accent); }
+		.presenter h1 { max-width: 1100px; margin: 4px auto; font-size: clamp(24px, 3vw, 48px); line-height: 1; letter-spacing: -1px; }
+		.clues { min-height: 0; display: grid; gap: 18px; margin: 8px auto; width: min(100%, 1040px); grid-template-columns: repeat(2, minmax(0, 1fr)); }
+		.clues.layout-1 { grid-template-columns: 1fr; width: min(100%, 1300px); }
+		.clues.layout-1 .clue { width: min(100%, 960px); height: clamp(300px, 42vh, 560px); }
+		.clues.layout-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); width: min(100%, 1160px); }
+		.clues.layout-2 .clue { width: min(100%, 540px); height: clamp(250px, 34vh, 460px); }
+		.clues.layout-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); width: min(100%, 1040px); }
+		.clues.layout-3 .clue:nth-child(3) { grid-column: 1 / -1; justify-self: center; width: min(100%, 500px); }
+		.clues.layout-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); width: min(100%, 1040px); }
+		.clue { min-width: 0; min-height: 0; width: min(100%, 480px); height: clamp(170px, 24vh, 300px); overflow: hidden; border: 4px solid var(--clue-border); background: var(--clue-bg); border-radius: 12px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.10); margin: 0 auto; display: block; }
+		.clue[hidden] { display: none; }
+		.clue img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center; background: var(--clue-image-bg); }
+		.presenter.answer-visible .clue { height: clamp(150px, 16vh, 250px); }
+		.presenter.answer-visible .clues { gap: 12px; margin-top: 2px; }
+		.presenter.answer-visible .answer-box { margin-top: 6px; }
+		.presenter.answer-visible .answer-image { width: min(560px, 45vw); height: min(20vh, 200px); margin-top: 2px; }
+		.clue.is-hidden img { visibility: hidden; }
+		.clue.is-hidden::after { content: 'Clue locked'; display: grid; height: 100%; place-items: center; color: var(--presenter-muted); font-family: Arial, sans-serif; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+		.answer-box {
+			margin: 8px auto;
+			padding: 10px 20px;
+			border: 1px solid var(--answer-box-border);
+			border-radius: 8px;
+			max-width: 900px;
+			color: var(--presenter-accent);
+			background: var(--answer-box-bg);
+			font-size: clamp(20px, 2.5vw, 34px);
+			box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
+		}
+		.answer-box.reveal { color: var(--presenter-text); background: rgba(255,255,255,.10); }
+		.answer-image { display: block; width: min(460px, 46vw); height: min(19vh, 220px); margin: 4px auto 6px; object-fit: contain; border: 4px solid var(--clue-border); border-radius: 10px; background: var(--clue-image-bg); box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
+		.answer-image[hidden] { display: none; }
+		.special-slide { width: min(900px, 90vw); margin: auto; padding: 50px 30px; border: 1px solid var(--answer-box-border); border-radius: 8px; background: var(--answer-box-bg); }
+		.special-slide[hidden], .clues[hidden] { display: none; }
+		.special-slide strong { display: block; margin-bottom: 18px; color: var(--presenter-accent); font-family: Arial, sans-serif; font-size: 14px; letter-spacing: .16em; text-transform: uppercase; }
+		.special-slide span { display: block; font-size: clamp(34px, 6vw, 82px); line-height: 1; }
+		.presenter.theme-sunrise { --presenter-bg: #f3e4c2; --presenter-text: #3d251c; --presenter-accent: #c25232; --presenter-muted: rgba(61,37,28,.62); --clue-bg: #ebc59a; --clue-border: #c25232; --clue-image-bg: #f9f0e6; --answer-box-bg: rgba(194,82,50,.08); --answer-box-border: rgba(194,82,50,.45); --button-border: rgba(61,37,28,.35); }
+		.presenter.theme-paper { --presenter-bg: #f2efe7; --presenter-text: #25323b; --presenter-accent: #087f79; --presenter-muted: rgba(37,50,59,.62); --clue-bg: #edf4f0; --clue-border: #25323b; --clue-image-bg: #f8faf8; --answer-box-bg: rgba(8,127,121,.08); --answer-box-border: rgba(8,127,121,.45); --button-border: rgba(37,50,59,.35); }
+		.presenter.theme-night { --presenter-bg: #151827; --presenter-text: #f6edda; --presenter-accent: #f7ca62; --presenter-muted: rgba(246,237,218,.62); --clue-bg: rgba(255,255,255,.06); --clue-border: #f7ca62; --clue-image-bg: rgba(255,255,255,.04); --answer-box-bg: rgba(247,202,98,.08); --answer-box-border: rgba(247,202,98,.45); --button-border: rgba(246,237,218,.35); }
+		.presenter.theme-citrus { --presenter-bg: #e9f1d0; --presenter-text: #24351d; --presenter-accent: #e35d32; --presenter-muted: rgba(36,53,29,.62); --clue-bg: #e3eec4; --clue-border: #e35d32; --clue-image-bg: #f7faee; --answer-box-bg: rgba(227,93,50,.08); --answer-box-border: rgba(227,93,50,.45); --button-border: rgba(36,53,29,.35); }
+		.presenter-controls { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+		.presenter .btn-quiet { color: var(--presenter-text); border-color: var(--button-border); }
+		.shortcut-hint { color: var(--presenter-muted); font-family: Arial, sans-serif; font-size: 12px; letter-spacing: .03em; }
+		.toast { position: fixed; right: 24px; bottom: 24px; padding: 13px 16px; border-radius: 4px; color: white; background: var(--ink); font-family: Arial, sans-serif; font-size: 13px; opacity: 0; transform: translateY(12px); transition: .2s; pointer-events: none; }
+		.toast.show { opacity: 1; transform: translateY(0); }
+		@media (max-width: 760px) {
+			.topbar { height: 65px; padding: 0 5vw; }
+			.topbar-note { display: none; }
+			.view { padding-top: 34px; }
+			.role-grid, .dashboard-grid { grid-template-columns: 1fr; }
+			h1, .dashboard-head h1 { font-size: 48px; letter-spacing: -2px; }
+			.dashboard-head { display: block; }
+			.header-actions { margin-top: 18px; }
+			.join-wrap { padding: 26px 20px; }
+			.image-upload { grid-template-columns: repeat(2, 1fr); }
+			.clues { gap: 8px; }
+			.presenter { height: calc(100vh - 65px); padding: 16px 4vw; }
+			.presenter-inner { grid-template-rows: auto auto minmax(0, 1fr) auto auto; gap: 3px; }
+			.clues { width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+			.clue { max-height: 27vh; }
+		}
+		@media (max-height: 600px) {
+			.presenter { padding-top: 6px; padding-bottom: 6px; }
+			.presenter-inner { gap: 1px; }
+			.presenter h1 { margin: 1px auto; font-size: clamp(18px, 3vw, 30px); }
+			.clues { gap: 6px; margin: 2px auto; }
+			.clue { max-height: 13vh; border-width: 2px; }
+			.answer-box { margin: 2px auto; padding: 5px 12px; font-size: clamp(15px, 2vw, 24px); }
+			.answer-image { width: min(360px, 48vw); height: min(15vh, 150px); border-width: 2px; }
+			.presenter-controls .btn { padding: 6px 10px; }
+			.shortcut-hint { font-size: 10px; }
+		}
+	</style>
+</head>
+<body>
+	<div class="app-shell">
+		<header class="topbar">
+			<div class="brand"><span class="brand-mark">↗</span> LinkUp</div>
+			<div class="topbar-note">A connection game for curious teams</div>
+		</header>
+
+		<main id="homeView" class="view">
+			<div class="eyebrow">Picture the link</div>
+			<h1>One question.<br>Four clues.<br>One connection.</h1>
+			<p class="lede">Host a beautifully simple connection round. Add your images and question, invite teams in, then reveal the answer when the room is ready.</p>
+			<div class="role-grid">
+				<section class="role-card">
+					<div class="role-icon">✦</div>
+					<h2>Host the game</h2>
+					<p>Create rounds, upload four clue images, manage teams, and control the presenter screen.</p>
+					<button class="btn btn-primary" data-view="adminView">Open host dashboard</button>
+                    <a href="/index.html" class="btn btn-quiet" style="display:inline-block; text-decoration:none; margin-top:8px;">Back to Main Buzzer</a>
+				</section>
+				<section class="role-card">
+					<div class="role-icon">♧</div>
+					<h2>Join a team</h2>
+					<p>Enter your team name and player name. No account or editing access is needed.</p>
+					<button class="btn btn-coral" data-view="joinView">Join the game</button>
+				</section>
+			</div>
+		</main>
+
+		<main id="joinView" class="view" hidden>
+			<div class="join-wrap">
+				<span class="back-link" data-view="homeView">← Back to start</span>
+				<div class="eyebrow">Team entrance</div>
+				<h1>Find your connection.</h1>
+				<p class="lede">Tell the host who is playing. The host will see your team on their scoreboard.</p>
+				<form id="joinForm">
+					<div class="field"><label for="teamName">Team name</label><input id="teamName" required placeholder="The Bright Sparks"></div>
+					<div class="field"><label for="playerName">Your name</label><input id="playerName" required placeholder="Your name"></div>
+					<button class="btn btn-coral" type="submit">Enter the room →</button>
+				</form>
+			</div>
+		</main>
+
+		<main id="teamView" class="view" hidden>
+			<div class="dashboard-head">
+				<div><div class="eyebrow">Team room</div><h1 id="teamWelcome">You are playing.</h1></div>
+				<div class="header-actions"><button id="teamExitBtn" class="btn btn-quiet">Exit team view</button><button id="teamPresenterBtn" class="btn btn-primary">Show question screen ↗</button></div>
+			</div>
+			<section class="panel">
+				<div class="panel-head"><h2 id="teamRoundLabel">Current question</h2><span id="teamAnswerStatus">Waiting</span></div>
+				<div id="teamQuestion" class="team-question">The host has not started a question yet.</div>
+				<form id="teamAnswerForm" class="team-answer-form"><input id="teamAnswerInput" required placeholder="Type your team answer"><button class="btn btn-coral" type="submit">Submit answer</button></form>
+				<p style="color:var(--muted);font-family:Arial,sans-serif;font-size:12px">The host will decide whether your answer is correct.</p>
+			</section>
+		</main>
+
+		<main id="adminView" class="view" hidden>
+			<div class="dashboard-head">
+				<div><div class="eyebrow">Host dashboard</div><h1>Set the room.</h1></div>
+				<div class="header-actions"><button class="btn btn-quiet" data-view="homeView">Exit host mode</button><button id="presentBtn" class="btn btn-primary">Open presenter screen ↗</button></div>
+			</div>
+			<div class="dashboard-grid">
+				<section class="panel">
+					<div class="panel-head"><h2>Game rounds</h2><div class="header-actions"><button id="newBatchBtn" class="btn btn-small btn-quiet">+ New batch</button><button id="newRoundBtn" class="btn btn-small btn-primary">+ New round</button></div></div>
+					<div id="roundList" class="round-list"></div>
+				</section>
+				<aside class="panel">
+					<div class="panel-head"><h2 id="editorTitle">New round</h2><span>Host only</span></div>
+					<form id="roundForm">
+						<div class="field"><label for="roundNameInput">Game round name</label><input id="roundNameInput" required placeholder="Round 1 · Connections"></div>
+						<div class="field"><label for="batchNameInput">Batch name</label><input id="batchNameInput" required placeholder="Batch 1"></div>
+						<div class="field"><label for="slideType">Slide type</label><select id="slideType"><option value="connection">Connection question</option><option value="greeting">Greeting</option><option value="break">Break</option><option value="windup">Wind-up / closing</option><option value="custom">Custom announcement</option></select></div>
+						<div class="field"><label for="slideTheme">Slide theme</label><select id="slideTheme"><option value="ocean">Ocean teal</option><option value="sunrise">Warm sunrise</option><option value="paper">Clean paper</option><option value="night">Night plum</option><option value="citrus">Citrus green</option></select></div>
+						<div class="field"><label for="questionInput">Connection question</label><textarea id="questionInput" required placeholder="What connects these two images?"></textarea></div>
+						<div class="field"><label for="revealMode">Clue reveal mode</label><select id="revealMode"><option value="all">Show all images at once</option><option value="oneByOne">Reveal images one by one</option></select></div>
+						<div class="field"><label for="imageCountInput">Clue image count</label><select id="imageCountInput"><option value="0">0 images</option><option value="1">1 image</option><option value="2">2 images</option><option value="3">3 images</option><option value="4">4 images</option></select></div>
+						<div class="field"><label>Clue images (0–4)</label><div class="image-upload">
+							<label class="upload-box" for="imageOne"><strong>＋</strong><span id="imageOneLabel">Clue image 1</span><input id="imageOne" type="file" accept="image/*" hidden></label>
+							<label class="upload-box" for="imageTwo"><strong>＋</strong><span id="imageTwoLabel">Clue image 2</span><input id="imageTwo" type="file" accept="image/*" hidden></label>
+							<label class="upload-box" for="imageThree"><strong>＋</strong><span id="imageThreeLabel">Clue image 3</span><input id="imageThree" type="file" accept="image/*" hidden></label>
+							<label class="upload-box" for="imageFour"><strong>＋</strong><span id="imageFourLabel">Clue image 4</span><input id="imageFour" type="file" accept="image/*" hidden></label>
+						</div></div>
+						<div class="field"><label for="answerInput">Correct answer (connection slides only)</label><input id="answerInput" placeholder="The connection players should find"></div>
+						<label class="upload-box answer-upload" for="answerImage"><strong>✓</strong><span id="answerImageLabel">Optional answer image</span><input id="answerImage" type="file" accept="image/*" hidden></label>
+						<div class="form-actions"><button id="clearFormBtn" class="btn btn-quiet" type="button">Clear</button><button class="btn btn-primary" type="submit">Save round</button></div>
+					</form>
+				</aside>
+				<section class="panel">
+						<div class="panel-head"><h2>Teams and answers</h2><span id="teamCount">0 teams</span></div>
+					<div id="scoreboard" class="scoreboard"><div class="empty">Teams will appear here when they join.</div></div>
+				</section>
+				<section class="panel">
+						<div class="panel-head"><h2>Game control</h2><span><b id="currentRoundLabel">—</b></span></div>
+					<p style="color:var(--muted);margin-top:0">The presenter screen shows the active question and clues. Keep the answer hidden until teams have submitted.</p>
+					<button id="revealBtn" class="btn btn-coral" type="button">Reveal answer</button>
+					<button id="resetGameBtn" class="btn btn-quiet" type="button" style="margin-left:6px">Reset reveal</button>
+				</section>
+			</div>
+		</main>
+
+		<section id="presenterView" class="presenter" hidden>
+			<div class="presenter-inner">
+				<div class="eyebrow"><span id="presentRoundNumber">Round 1 · Batch 1 · Q1</span></div>
+				<h1 id="presentQuestion">Add a round in the host dashboard to begin.</h1>
+				<div id="presentSpecial" class="special-slide" hidden><strong id="presentSpecialTitle">Greeting</strong><span id="presentSpecialMessage"></span></div>
+				<div id="presentClues" class="clues"><div class="clue"><img id="presentImageOne" alt="First clue"></div><div class="clue"><img id="presentImageTwo" alt="Second clue"></div><div class="clue"><img id="presentImageThree" alt="Third clue"></div><div class="clue"><img id="presentImageFour" alt="Fourth clue"></div></div>
+				<div id="presentAnswer" class="answer-box">Answer hidden · think out loud with your team</div><img id="presentAnswerImage" class="answer-image" alt="Answer image" hidden>
+				<div class="shortcut-hint">← / → previous or next slide · Space reveal clue · R reveal answer · Esc host controls</div>
+			</div>
+		</section>
+	</div>
+	<div id="toast" class="toast"></div>
+
+	<!-- Main Script using Supabase -->
+	<script>
+		// Setup Supabase Client
+		const SUPABASE_URL = localStorage.getItem('supabaseUrl') || 'https://lbdpaedflraegmyeyiat.supabase.co';
+		const SUPABASE_KEY = localStorage.getItem('supabaseKey') || 'sb_publishable_fc7Gs9mzlB7IrVS-PyijdQ_isJxONfg';
+		
+		const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+		const placeholderOne = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500"%3E%3Crect width="800" height="500" fill="%23087f79"/%3E%3Ctext x="400" y="260" text-anchor="middle" fill="white" font-size="34" font-family="Georgia"%3EClue image 1%3C/text%3E%3C/svg%3E';
+		const placeholderTwo = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500"%3E%3Crect width="800" height="500" fill="%23ef6e5b"/%3E%3Ctext x="400" y="260" text-anchor="middle" fill="white" font-size="34" font-family="Georgia"%3EClue image 2%3C/text%3E%3C/svg%3E';
+		const placeholderThree = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500"%3E%3Crect width="800" height="500" fill="%23f7ca62"/%3E%3Ctext x="400" y="260" text-anchor="middle" fill="%2317212b" font-size="34" font-family="Georgia"%3EClue image 3%3C/text%3E%3C/svg%3E';
+		const placeholderFour = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500"%3E%3Crect width="800" height="500" fill="%23132f32"/%3E%3Ctext x="400" y="260" text-anchor="middle" fill="white" font-size="34" font-family="Georgia"%3EClue image 4%3C/text%3E%3C/svg%3E';
+		const slideLabels = { connection: 'Connection question', greeting: 'Greeting', break: 'Break', windup: 'Wind-up / closing', custom: 'Custom announcement' };
+		
+		let rounds = [];
+		let teams = [];
+		let activeRoundId = null;
+		let editingId = null;
+		let revealed = false;
+		let clueRevealIndex = 0;
+		let imageData = [null, null, null, null];
+		let answerImageData = null;
+		let currentTeamId = localStorage.getItem('linkup-current-team') || '';
+
+		const $ = id => document.getElementById(id);
+		
+		// Initialize Data from Backend
+		async function initData() {
+			try {
+				const res = await fetch('/api/initial-state');
+				const data = await res.json();
+				if(data.ok) {
+					rounds = data.linkupRounds || [];
+					teams = data.teams || [];
+					
+					const state = data.state || {};
+					activeRoundId = state.active_linkup_round_id || null;
+					revealed = state.linkup_revealed || false;
+					clueRevealIndex = state.linkup_clue_index || 0;
+
+					renderAdmin();
+					renderPresenter();
+					renderTeamView();
+				}
+			} catch(e) {
+				console.error('Init data error', e);
+			}
+
+			// Supabase Realtime Listener
+			supabase.channel('public:*')
+				.on('postgres_changes', { event: '*', schema: 'public', table: 'game_state' }, payload => {
+					if (payload.new.id === 1) {
+						activeRoundId = payload.new.active_linkup_round_id;
+						revealed = payload.new.linkup_revealed;
+						clueRevealIndex = payload.new.linkup_clue_index;
+						renderPresenter();
+						renderTeamView();
+						renderAdmin();
+					}
+				})
+				.on('postgres_changes', { event: '*', schema: 'public', table: 'linkup_rounds' }, payload => {
+					if (payload.eventType === 'INSERT') rounds.push(payload.new);
+					else if (payload.eventType === 'UPDATE') {
+						const i = rounds.findIndex(r => r.id === payload.new.id);
+						if (i > -1) rounds[i] = payload.new;
+					} else if (payload.eventType === 'DELETE') {
+						rounds = rounds.filter(r => r.id !== payload.old.id);
+					}
+					rounds.sort((a,b) => a.order_index - b.order_index);
+					renderAdmin();
+					renderPresenter();
+				})
+				.on('postgres_changes', { event: '*', schema: 'public', table: 'teams' }, payload => {
+					if (payload.eventType === 'INSERT') teams.push(payload.new);
+					else if (payload.eventType === 'UPDATE') {
+						const i = teams.findIndex(t => t.id === payload.new.id);
+						if (i > -1) teams[i] = payload.new;
+					} else if (payload.eventType === 'DELETE') {
+                        teams = teams.filter(t => t.id !== payload.old.id);
+                    }
+					renderAdmin();
+					renderTeamView();
+				})
+				.subscribe();
+		}
+
+		async function saveState() {
+			await fetch('/api/admin/state', {
+				method: 'POST', headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ 
+					activeLinkupRoundId: activeRoundId, 
+					linkupRevealed: revealed,
+					linkupClueIndex: clueRevealIndex
+				})
+			});
+		}
+
+		function getActiveRound() {
+			if (!activeRoundId) return rounds[0] || null;
+			return rounds.find(r => r.id === activeRoundId) || rounds[0] || null;
+		}
+
+		function show(id) { 
+			document.querySelectorAll('.view, .presenter').forEach(el => el.hidden = el.id !== id); 
+			document.body.classList.toggle('presenting', id === 'presenterView'); 
+			if (id === 'adminView') renderAdmin(); 
+			if (id === 'presenterView') renderPresenter(); 
+			if (id === 'teamView') renderTeamView(); 
+		}
+		function toast(message) { 
+			const el = $('toast'); el.textContent = message; el.classList.add('show'); 
+			setTimeout(() => el.classList.remove('show'), 2200); 
+		}
+
+		function renderAdmin() {
+			const groups = rounds.reduce((result, round, index) => { 
+				const name = round.round_name || 'Round 1'; 
+				(result[name] ||= []).push({ round, index }); return result; 
+			}, {});
+			
+			$('roundList').innerHTML = rounds.length ? Object.entries(groups).map(([name, questions]) => { 
+				const batches = questions.reduce((result, question) => { 
+					const batchName = question.round.batch_name || 'Batch 1'; 
+					(result[batchName] ||= []).push(question); return result; 
+				}, {}); 
+				return `<section class="round-group"><div class="round-group-head"><h3>${escapeHtml(name)}</h3><span>${questions.length} question${questions.length === 1 ? '' : 's'} · ${Object.keys(batches).length} batch${Object.keys(batches).length === 1 ? '' : 'es'}</span></div>${Object.entries(batches).map(([batchName, batchQuestions]) => `<div class="batch-group"><div class="batch-head"><strong>${escapeHtml(batchName)}</strong><span>${batchQuestions.length} question${batchQuestions.length === 1 ? '' : 's'}</span></div>${batchQuestions.map(({ round, index }, questionIndex) => `<div class="round-item ${round.id === activeRoundId ? 'active' : ''}" data-id="${round.id}" draggable="true" data-drag-index="${index}"><span class="drag-handle" aria-hidden="true">⋮⋮</span><span class="round-number">${questionIndex + 1}</span><div class="round-summary">${escapeHtml(round.question)}<small>${escapeHtml(slideLabels[round.slide_type || 'connection'])} · ${escapeHtml(round.answer || '')}</small></div><button class="edit-round" data-edit="${round.id}" aria-label="Edit slide">✎</button><button class="delete-round" data-delete="${round.id}" aria-label="Delete question">×</button></div>`).join('')}</div>`).join('')}</section>`; 
+			}).join('') : '<div class="empty">No rounds yet. Add your first connection question.</div>';
+			
+			$('teamCount').textContent = `${teams.length} team${teams.length === 1 ? '' : 's'}`;
+			$('scoreboard').innerHTML = teams.length ? teams.map(team => `<div class="team-row"><div><strong>${escapeHtml(team.team_name)}</strong><small>Score: ${team.score}</small></div><span class="score">${team.score || 0}</span></div>`).join('') : '<div class="empty">Teams will appear here when they join.</div>';
+			
+			const actRnd = getActiveRound();
+			$('currentRoundLabel').textContent = actRnd ? `${actRnd.round_name || 'Round 1'} · ${actRnd.batch_name || 'Batch 1'}` : '—';
+		}
+
+		function renderPresenter() {
+			const round = getActiveRound();
+			const revealBtn = $('presentRevealBtn');
+			const cluesEl = $('presentClues');
+			const images = [
+				$('presentImageOne'), $('presentImageTwo'), $('presentImageThree'), $('presentImageFour')
+			];
+			
+			$('presenterView').className = `presenter theme-${round?.theme || 'ocean'}${revealed ? ' answer-visible' : ''}`;
+			
+			if (!round) {
+				$('presentQuestion').hidden = false;
+				$('presentSpecial').hidden = true;
+				cluesEl.hidden = false;
+				$('presentAnswer').hidden = false;
+				$('presentQuestion').textContent = 'Add a round in the host dashboard to begin.';
+				images.forEach((image, index) => {
+					image.src = [placeholderOne, placeholderTwo, placeholderThree, placeholderFour][index];
+					image.parentElement.hidden = false;
+				});
+				cluesEl.className = 'clues layout-4';
+				$('presentAnswer').textContent = 'Answer hidden · think out loud with your team';
+				$('presentAnswerImage').hidden = true;
+				if (revealBtn) revealBtn.disabled = true;
+				return;
+			}
+			
+			const rawImages = round.images || [];
+			const availableImages = rawImages.filter(item => item && item.trim && item.trim() !== '');
+			const imageCount = availableImages.length;
+			const computedLayout = imageCount >= 3 ? 4 : imageCount || 1;
+			
+			cluesEl.className = `clues layout-${computedLayout}`;
+			const isSpecial = (round.slide_type || 'connection') !== 'connection';
+			
+			$('presentRoundNumber').textContent = `${round.round_name || 'Round 1'} · ${round.batch_name || 'Batch 1'}`;
+			$('presentQuestion').hidden = isSpecial;
+			$('presentSpecial').hidden = !isSpecial;
+			cluesEl.hidden = isSpecial || imageCount === 0;
+			$('presentAnswer').hidden = isSpecial;
+			$('presentAnswerImage').hidden = isSpecial || !revealed || !round.answer_image;
+			
+			if (revealBtn) { revealBtn.disabled = isSpecial; revealBtn.textContent = revealed ? 'Answer revealed' : 'Reveal answer'; }
+			$('presentSpecialTitle').textContent = slideLabels[round.slide_type] || 'Announcement';
+			$('presentSpecialMessage').textContent = round.question;
+			$('presentQuestion').textContent = round.question;
+			
+			images.forEach((image, index) => {
+				const item = rawImages[index];
+				const hasImage = Boolean(item && item.trim && item.trim() !== '');
+				image.src = hasImage ? item : '';
+				image.parentElement.hidden = !hasImage;
+				image.parentElement.classList.toggle('is-hidden', round.reveal_mode === 'oneByOne' && index > clueRevealIndex);
+			});
+			
+			$('presentAnswer').textContent = revealed ? round.answer : 'Answer hidden · think out loud with your team';
+			$('presentAnswer').classList.toggle('reveal', revealed);
+			$('presentAnswerImage').src = round.answer_image || '';
+		}
+
+		function renderTeamView() { 
+			const team = teams.find(item => item.id === currentTeamId); 
+			const round = getActiveRound(); 
+			if (!team) return; // Wait for join
+			$('teamWelcome').textContent = `${team.team_name}`; 
+			$('teamRoundLabel').textContent = round ? `${round.round_name || 'Round 1'} · ${round.batch_name || 'Batch 1'}` : 'Waiting for question'; 
+			$('teamQuestion').textContent = round ? round.question : 'The host has not started a question yet.'; 
+		}
+
+		function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char])); }
+		function syncImageBoxes() {
+			const count = Math.max(0, Math.min(4, Number($('imageCountInput').value || 0)));
+			const boxes = [
+				document.querySelector('label[for="imageOne"]'),
+				document.querySelector('label[for="imageTwo"]'),
+				document.querySelector('label[for="imageThree"]'),
+				document.querySelector('label[for="imageFour"]')
+			];
+			boxes.forEach((box, index) => { box.hidden = index >= count; });
+		}
+		
+		function clearForm(roundName = 'Round 1', batchName = 'Batch 1') { 
+			editingId = null; 
+			imageData = [null, null, null, null]; 
+			answerImageData = null; 
+			$('editorTitle').textContent = 'New question'; 
+			$('roundForm').reset(); 
+			$('roundNameInput').value = roundName; 
+			$('batchNameInput').value = batchName; 
+			$('slideTheme').value = 'ocean'; 
+			$('imageCountInput').value = '4'; 
+			syncImageBoxes(); 
+			['One', 'Two', 'Three', 'Four'].forEach((number, index) => $(`image${number}Label`).textContent = `Clue image ${index + 1}`); 
+			$('answerImageLabel').textContent = 'Optional answer image'; 
+		}
+
+		function editSlide(id) { 
+			const round = rounds.find(r => r.id === id); 
+			if (!round) return; 
+			editingId = id; 
+			activeRoundId = id; 
+			imageData = (round.images || [null, null, null, null]).slice(0, 4); 
+			answerImageData = round.answer_image || null; 
+			$('editorTitle').textContent = 'Edit slide'; 
+			$('roundNameInput').value = round.round_name || 'Round 1'; 
+			$('batchNameInput').value = round.batch_name || 'Batch 1'; 
+			$('slideType').value = round.slide_type || 'connection'; 
+			$('slideTheme').value = round.theme || 'ocean'; 
+			$('questionInput').value = round.question || ''; 
+			$('revealMode').value = round.reveal_mode || 'all'; 
+			$('answerInput').value = round.answer || ''; 
+			const imageCount = imageData.filter(Boolean).length; 
+			$('imageCountInput').value = String(Math.min(4, Math.max(0, imageCount))); 
+			syncImageBoxes(); 
+			['One', 'Two', 'Three', 'Four'].forEach((number, imageIndex) => $(`image${number}Label`).textContent = imageData[imageIndex] ? `Saved clue image ${imageIndex + 1}` : `Clue image ${imageIndex + 1}`); 
+			$('answerImageLabel').textContent = answerImageData ? 'Saved answer image' : 'Optional answer image'; 
+			saveState();
+			$('roundForm').scrollIntoView({ behavior: 'smooth', block: 'start' }); 
+		}
+
+		document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => show(button.dataset.view)));
+		
+		$('newRoundBtn').addEventListener('click', () => { const roundNumbers = rounds.map(round => Number((round.round_name || 'Round 1').match(/\d+/)?.[0] || 1)); clearForm(`Round ${Math.max(0, ...roundNumbers) + 1}`, 'Batch 1'); });
+		$('newBatchBtn').addEventListener('click', () => { 
+			const actRnd = getActiveRound();
+			const currentRound = actRnd?.round_name || 'Round 1'; 
+			const batchNumbers = rounds.filter(round => (round.round_name || 'Round 1') === currentRound).map(round => Number((round.batch_name || 'Batch 1').match(/\d+/)?.[0] || 1)); 
+			clearForm(currentRound, `Batch ${Math.max(0, ...batchNumbers) + 1}`); 
+		});
+		$('clearFormBtn').addEventListener('click', clearForm);
+		
+		document.querySelectorAll('.upload-box input').forEach(input => input.addEventListener('change', event => { 
+			const file = event.target.files[0]; 
+			if (!file) return; 
+			const reader = new FileReader(); 
+			reader.onload = () => { 
+				if (input.id === 'answerImage') { 
+					answerImageData = reader.result; $('answerImageLabel').textContent = file.name; 
+				} else { 
+					const index = Number(input.id.replace('image', '').replace('One', '1').replace('Two', '2').replace('Three', '3').replace('Four', '4')) - 1; 
+					imageData[index] = reader.result; $(`${input.id}Label`).textContent = file.name; 
+				} 
+			}; 
+			reader.readAsDataURL(file); 
+		}));
+		
+		$('imageCountInput').addEventListener('change', syncImageBoxes);
+		syncImageBoxes();
+		
+		$('roundForm').addEventListener('submit', async event => { 
+			event.preventDefault(); 
+			const slideType = $('slideType').value; 
+			const imageCount = Math.max(0, Math.min(4, Number($('imageCountInput').value || 0))); 
+			const images = imageData.slice(0, imageCount).map((image) => image || null); 
+			while (images.length < 4) images.push(null); 
+			
+			const roundData = { 
+				id: editingId,
+				round_name: $('roundNameInput').value.trim(), 
+				batch_name: $('batchNameInput').value.trim(), 
+				slide_type: slideType, 
+				theme: $('slideTheme').value, 
+				question: $('questionInput').value.trim(), 
+				answer: $('answerInput').value.trim(), 
+				reveal_mode: $('revealMode').value, 
+				images, 
+				answer_image: answerImageData,
+				order_index: editingId ? (rounds.find(r=>r.id===editingId)?.order_index || rounds.length) : rounds.length
+			}; 
+			
+			const res = await fetch('/api/linkup/rounds', {
+				method: 'POST',
+				headers: {'Content-Type': 'application/json'},
+				body: JSON.stringify(roundData)
+			});
+			const data = await res.json();
+
+			if (data.ok) {
+				activeRoundId = data.round.id;
+				revealed = false; 
+				clueRevealIndex = 0; 
+				saveState(); 
+				clearForm(data.round.round_name, data.round.batch_name); 
+				toast(`${slideLabels[slideType]} saved in ${data.round.round_name}`);
+			}
+		});
+
+		$('roundList').addEventListener('click', async event => { 
+			const deleteButton = event.target.closest('[data-delete]'); 
+			if (deleteButton) { 
+				await fetch('/api/linkup/rounds/delete', {
+					method: 'POST', headers: {'Content-Type':'application/json'},
+					body: JSON.stringify({id: deleteButton.dataset.delete})
+				});
+				toast('Round deleted'); return; 
+			} 
+			const editButton = event.target.closest('[data-edit]'); 
+			if (editButton) { editSlide(editButton.dataset.edit); return; } 
+			const item = event.target.closest('[data-id]'); 
+			if (!item) return; 
+			activeRoundId = item.dataset.id; 
+			revealed = false; clueRevealIndex = 0; 
+			saveState(); 
+		});
+		
+		$('presentBtn').addEventListener('click', () => show('presenterView'));
+		
+		function revealAnswer() { 
+			if (!activeRoundId) return toast('Add a round first'); 
+			revealed = true; saveState(); 
+		}
+		function nextSlide() { 
+			if (!rounds.length) return; 
+			const idx = rounds.findIndex(r => r.id === activeRoundId);
+			if (idx >= 0 && idx < rounds.length - 1) {
+				activeRoundId = rounds[idx+1].id;
+				revealed = false; clueRevealIndex = 0; saveState(); 
+			}
+		}
+		function previousSlide() { 
+			if (!rounds.length) return; 
+			const idx = rounds.findIndex(r => r.id === activeRoundId);
+			if (idx > 0) {
+				activeRoundId = rounds[idx-1].id;
+				revealed = false; clueRevealIndex = 0; saveState(); 
+			}
+		}
+		function revealNextClue() { 
+			const round = getActiveRound();
+			if (!round || round.reveal_mode !== 'oneByOne') return; 
+			clueRevealIndex = Math.min(3, clueRevealIndex + 1); 
+			saveState(); 
+		}
+
+		$('revealBtn').addEventListener('click', revealAnswer);
+		$('resetGameBtn').addEventListener('click', () => { revealed = false; clueRevealIndex = 0; saveState(); toast('Answer hidden again'); });
+		
+		document.addEventListener('keydown', event => { 
+			if ($('presenterView').hidden) return; 
+			if (event.key === 'ArrowRight' || event.key === 'PageDown' || event.key.toLowerCase() === 'n') { event.preventDefault(); nextSlide(); } 
+			else if (event.key === 'ArrowLeft' || event.key === 'PageUp' || event.key.toLowerCase() === 'p') { event.preventDefault(); previousSlide(); } 
+			else if (event.key === ' ' || event.key.toLowerCase() === 'c') { event.preventDefault(); revealNextClue(); } 
+			else if (event.key.toLowerCase() === 'r' || event.key.toLowerCase() === 'a') { event.preventDefault(); revealAnswer(); } 
+			else if (event.key === 'Escape') { show('adminView'); } 
+		});
+
+		$('joinForm').addEventListener('submit', async event => { 
+			event.preventDefault(); 
+			const res = await fetch('/api/teams/join', {
+				method: 'POST', headers: {'Content-Type': 'application/json'},
+				body: JSON.stringify({ teamName: $('teamName').value.trim(), memberName: $('playerName').value.trim() })
+			});
+			const data = await res.json();
+			if(data.ok) {
+				currentTeamId = data.team.id; 
+				localStorage.setItem('linkup-current-team', currentTeamId); 
+				$('joinForm').reset(); toast('You are in the room'); show('teamView');
+			}
+		});
+
+		$('teamExitBtn').addEventListener('click', () => { currentTeamId = ''; localStorage.removeItem('linkup-current-team'); show('homeView'); });
+		$('teamPresenterBtn').addEventListener('click', () => show('presenterView'));
+		
+		initData();
+		
+		if (localStorage.getItem('admin') === 'true') {
+			// Auto login if admin
+            show('adminView');
+		} else if (currentTeamId) {
+            show('teamView');
+        }
+	</script>
+</body>
+</html>

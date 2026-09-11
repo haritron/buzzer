@@ -98,6 +98,10 @@ app.post('/api/admin/state', async (req, res) => {
   if (newState.activeRound !== undefined) updateData.active_round = newState.activeRound;
   if (newState.activeBatch !== undefined) updateData.active_batch = newState.activeBatch;
   if (newState.tournamentConfig !== undefined) updateData.tournament_config = newState.tournamentConfig;
+  
+  if (newState.activeLinkupRoundId !== undefined) updateData.active_linkup_round_id = newState.activeLinkupRoundId;
+  if (newState.linkupRevealed !== undefined) updateData.linkup_revealed = newState.linkupRevealed;
+  if (newState.linkupClueIndex !== undefined) updateData.linkup_clue_index = newState.linkupClueIndex;
 
   const { error } = await supabase
     .from('game_state')
@@ -239,21 +243,48 @@ app.post('/api/reset-data', async (req, res) => {
     flash_type: null,
     flash_timestamp: null,
     active_round: 1,
-    active_batch: 1
+    active_batch: 1,
+    active_linkup_round_id: null,
+    linkup_revealed: false,
+    linkup_clue_index: 0
   }).eq('id', 1);
 
   res.json({ ok: true });
 });
 
+app.post('/api/linkup/rounds', async (req, res) => {
+  const { id, round_name, batch_name, slide_type, theme, question, answer, reveal_mode, images, answer_image, order_index } = req.body;
+  let result;
+  if (id) {
+    result = await supabase.from('linkup_rounds').update({
+      round_name, batch_name, slide_type, theme, question, answer, reveal_mode, images, answer_image, order_index
+    }).eq('id', id).select().single();
+  } else {
+    result = await supabase.from('linkup_rounds').insert([{
+      round_name, batch_name, slide_type, theme, question, answer, reveal_mode, images, answer_image, order_index
+    }]).select().single();
+  }
+  if (result.error) return res.status(500).json({ ok: false, message: result.error.message });
+  res.json({ ok: true, round: result.data });
+});
+
+app.post('/api/linkup/rounds/delete', async (req, res) => {
+  const { id } = req.body;
+  const { error } = await supabase.from('linkup_rounds').delete().eq('id', id);
+  if (error) return res.status(500).json({ ok: false, message: error.message });
+  res.json({ ok: true });
+});
+
 app.get('/api/initial-state', async (req, res) => {
   // Fetch initial data for clients who just connected
-  const [teamsRes, membersRes, questionsRes, slidesRes, elementsRes, stateRes] = await Promise.all([
+  const [teamsRes, membersRes, questionsRes, slidesRes, elementsRes, stateRes, linkupRes] = await Promise.all([
     supabase.from('teams').select('*').order('joined_at', { ascending: true }),
     supabase.from('team_members').select('*'),
     supabase.from('questions').select('*').order('id', { ascending: true }),
     supabase.from('slides').select('*').order('slide_order', { ascending: true }),
     supabase.from('slide_elements').select('*').order('element_order', { ascending: true }),
-    supabase.from('game_state').select('*').eq('id', 1).single()
+    supabase.from('game_state').select('*').eq('id', 1).single(),
+    supabase.from('linkup_rounds').select('*').order('order_index', { ascending: true })
   ]);
 
   res.json({
@@ -263,6 +294,7 @@ app.get('/api/initial-state', async (req, res) => {
     questions: questionsRes.data || [],
     slides: slidesRes.data || [],
     slideElements: elementsRes.data || [],
+    linkupRounds: linkupRes.data || [],
     state: stateRes.data || {}
   });
 });

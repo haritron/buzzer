@@ -118,3 +118,34 @@ CREATE POLICY "Allow public select on slide_elements" ON slide_elements FOR SELE
 CREATE POLICY "Allow public insert on slide_elements" ON slide_elements FOR INSERT WITH CHECK (true);
 CREATE POLICY "Allow public update on slide_elements" ON slide_elements FOR UPDATE USING (true);
 CREATE POLICY "Allow public delete on slide_elements" ON slide_elements FOR DELETE USING (true);
+
+-- 7. LINKUP ROUNDS (New game mode)
+DROP TABLE IF EXISTS linkup_rounds CASCADE;
+CREATE TABLE linkup_rounds (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    round_name TEXT NOT NULL,
+    batch_name TEXT NOT NULL,
+    slide_type TEXT DEFAULT 'connection',
+    theme TEXT DEFAULT 'ocean',
+    question TEXT,
+    answer TEXT,
+    reveal_mode TEXT DEFAULT 'all',
+    images JSONB DEFAULT '[]'::jsonb,
+    answer_image TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    order_index INTEGER DEFAULT 0
+);
+
+-- ADD TO GAME STATE
+ALTER TABLE game_state ADD COLUMN active_linkup_round_id UUID REFERENCES linkup_rounds(id) ON DELETE SET NULL;
+ALTER TABLE game_state ADD COLUMN linkup_revealed BOOLEAN DEFAULT false;
+ALTER TABLE game_state ADD COLUMN linkup_clue_index INTEGER DEFAULT 0;
+
+-- REALTIME & RLS
+ALTER PUBLICATION supabase_realtime ADD TABLE linkup_rounds;
+
+ALTER TABLE linkup_rounds ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow public select on linkup_rounds" ON linkup_rounds FOR SELECT USING (true);
+CREATE POLICY "Allow public insert on linkup_rounds" ON linkup_rounds FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update on linkup_rounds" ON linkup_rounds FOR UPDATE USING (true);
+CREATE POLICY "Allow public delete on linkup_rounds" ON linkup_rounds FOR DELETE USING (true);
