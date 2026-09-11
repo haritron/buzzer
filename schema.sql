@@ -37,17 +37,17 @@ CREATE TABLE slides (
     slide_order INTEGER NOT NULL,
     background TEXT,
     transition TEXT,
-    UNIQUE(question_id, slide_order) -- Proper constraint: unique slide order per question
+    UNIQUE(question_id, slide_order)
 );
 
 -- 5. SLIDE ELEMENTS (The Canvas Elements)
 CREATE TABLE slide_elements (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     slide_id UUID NOT NULL REFERENCES slides(id) ON DELETE CASCADE,
-    element_type TEXT NOT NULL, -- 'text', 'image', 'audio', 'video'
-    content TEXT NOT NULL, -- Text string or Supabase Storage URL
-    element_order INTEGER NOT NULL DEFAULT 0, -- Layer ordering
-    properties JSONB DEFAULT '{}'::jsonb -- JSONB for flexible advanced configuration (x, y, width, height, color, animation)
+    element_type TEXT NOT NULL,
+    content TEXT NOT NULL,
+    element_order INTEGER NOT NULL DEFAULT 0,
+    properties JSONB DEFAULT '{}'::jsonb
 );
 
 -- 6. GAME STATE
@@ -66,6 +66,7 @@ CREATE TABLE game_state (
     buzzer_unlocked_at BIGINT
 );
 
+-- Insert initial game state
 INSERT INTO game_state (id, buzzer_locked) VALUES (1, true);
 
 -- Enable Realtime
@@ -75,3 +76,45 @@ ALTER PUBLICATION supabase_realtime ADD TABLE game_state;
 ALTER PUBLICATION supabase_realtime ADD TABLE questions;
 ALTER PUBLICATION supabase_realtime ADD TABLE slides;
 ALTER PUBLICATION supabase_realtime ADD TABLE slide_elements;
+
+-- Enable Row Level Security (RLS)
+ALTER TABLE teams ENABLE ROW LEVEL SECURITY;
+ALTER TABLE team_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE game_state ENABLE ROW LEVEL SECURITY;
+ALTER TABLE questions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE slides ENABLE ROW LEVEL SECURITY;
+ALTER TABLE slide_elements ENABLE ROW LEVEL SECURITY;
+
+-- Allow anonymous access to teams
+CREATE POLICY "Allow public select on teams" ON teams FOR SELECT USING (true);
+CREATE POLICY "Allow public insert on teams" ON teams FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update on teams" ON teams FOR UPDATE USING (true);
+CREATE POLICY "Allow public delete on teams" ON teams FOR DELETE USING (true);
+
+-- Allow anonymous access to team_members
+CREATE POLICY "Allow public select on team_members" ON team_members FOR SELECT USING (true);
+CREATE POLICY "Allow public insert on team_members" ON team_members FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update on team_members" ON team_members FOR UPDATE USING (true);
+CREATE POLICY "Allow public delete on team_members" ON team_members FOR DELETE USING (true);
+
+-- Allow anonymous access to game_state
+CREATE POLICY "Allow public select on game_state" ON game_state FOR SELECT USING (true);
+CREATE POLICY "Allow public update on game_state" ON game_state FOR UPDATE USING (true);
+
+-- Allow anonymous access to questions
+CREATE POLICY "Allow public select on questions" ON questions FOR SELECT USING (true);
+CREATE POLICY "Allow public insert on questions" ON questions FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update on questions" ON questions FOR UPDATE USING (true);
+CREATE POLICY "Allow public delete on questions" ON questions FOR DELETE USING (true);
+
+-- Allow anonymous access to slides
+CREATE POLICY "Allow public select on slides" ON slides FOR SELECT USING (true);
+CREATE POLICY "Allow public insert on slides" ON slides FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update on slides" ON slides FOR UPDATE USING (true);
+CREATE POLICY "Allow public delete on slides" ON slides FOR DELETE USING (true);
+
+-- Allow anonymous access to slide_elements
+CREATE POLICY "Allow public select on slide_elements" ON slide_elements FOR SELECT USING (true);
+CREATE POLICY "Allow public insert on slide_elements" ON slide_elements FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update on slide_elements" ON slide_elements FOR UPDATE USING (true);
+CREATE POLICY "Allow public delete on slide_elements" ON slide_elements FOR DELETE USING (true);
