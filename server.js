@@ -104,6 +104,10 @@ app.post('/api/rooms/create', requireGlobalAdmin, async (req, res) => {
         break;
       } else {
         console.error("Room creation error/no room returned. Error:", error, "newRoom:", newRoom);
+        if (error && error.code === '23503') {
+           // Foreign key violation on admin_id
+           return res.status(401).json({ ok: false, message: 'Your admin session is invalid (ID not found in database). Please log out and log in again.' });
+        }
       }
     } else {
         console.error("Room already exists? existing:", existing);
