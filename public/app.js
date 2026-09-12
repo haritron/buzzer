@@ -678,14 +678,5 @@ function triggerFlash(type) {
     void flashEl.offsetWidth;
     flashEl.classList.add('active');
   }
-      
-      if (error) throw error;
-    }
-    closeMainPresenterModal();
-    window.open('/linkup.html?room=' + rc + '&present=true', '_blank');
-  } catch (err) {
-    console.error(err);
-    alert('Failed to start presentation');
-  }
 }
 
