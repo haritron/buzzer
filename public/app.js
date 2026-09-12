@@ -16,6 +16,12 @@ let globalState = {
   adminLoggedIn: localStorage.getItem('adminLoggedIn') === 'true'
 };
 
+const urlParams = new URLSearchParams(window.location.search);
+const roomCode = urlParams.get('room');
+if (!roomCode) { document.body.innerHTML = '<h1>Invalid Room</h1><p>Please provide a valid room code in the URL (e.g., ?room=room1)</p>'; throw new Error('No room code'); }
+const roomPassword = localStorage.getItem('room_password') || '';
+let currentRoomId = null;
+
 const supabaseUrl = 'https://lbdpaedflraegmyeyiat.supabase.co';
 const supabaseKey = 'sb_publishable_fc7Gs9mzlB7IrVS-PyijdQ_isJxONfg';
 
@@ -28,7 +34,7 @@ if (window.supabase) {
 
 async function initApp() {
   try {
-    const res = await apiCall('/api/initial-state', 'GET');
+    const res = await apiCall(`/api/initial-state?room=${roomCode}`, 'GET');
     globalState.teams = res.teams.map(t => ({id: t.id, memberName: t.member_name, teamName: t.team_name, score: t.score, assignedRound: t.assigned_round, assignedBatch: t.assigned_batch}));
     globalState.questions = res.questions;
     globalState.state = {
@@ -140,7 +146,7 @@ function renderPlayerJoin() {
       <input id="teamName" type="text" placeholder="Team Name" />
       <button class="btn" style="width:100%" onclick="joinTeam()">JOIN GAME</button>
       <div style="margin-top: 15px; text-align: center;">
-        <a href="/linkup.html" style="color: var(--primary); text-decoration: none; font-size: 0.9rem;">Play "LinkUp" Connection Game instead &rarr;</a>
+        <a href="/linkup.html?room=${roomCode}" style="color: var(--primary); text-decoration: none; font-size: 0.9rem;">Play "LinkUp" Connection Game instead &rarr;</a>
       </div>
     </div>
   `;
@@ -281,7 +287,7 @@ function renderAdminDashboard() {
       <div class="admin-header">
         <h2>Admin Dashboard</h2>
         <div>
-          <a href="/linkup.html" class="btn btn-primary" style="text-decoration:none; margin-right:8px;">Open LinkUp Game</a>
+          <a href="/linkup.html?room=${roomCode}" class="btn btn-primary" style="text-decoration:none; margin-right:8px;">Open LinkUp Game</a>
           <button class="btn btn-secondary" onclick="navigate('/display')" target="_blank">Open Display</button>
           <button class="btn btn-secondary" onclick="logout()">Logout</button>
         </div>

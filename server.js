@@ -16,13 +16,29 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Admin credentials (should also be env vars in production)
-const ADMIN_USER = process.env.ADMIN_USER || 'admin';
-const ADMIN_PASS = process.env.ADMIN_PASS || 'admin123';
+// Middleware to authenticate room admin
+async function requireAdmin(req, res, next) {
+  const roomCode = req.headers['x-room-code'] || req.body.roomCode || req.query.room;
+  const password = req.headers['x-room-password'] || req.body.password;
+  
+  if (!roomCode || !password) return res.status(401).json({ ok: false, message: 'Missing room credentials' });
+  
+  const { data: room, error } = await supabase.from('rooms').select('id, admin_password').eq('room_code', roomCode).single();
+  
+  if (error || !room || room.admin_password !== password) {
+    return res.status(401).json({ ok: false, message: 'Invalid room credentials' });
+  }
+  
+  req.roomId = room.id;
+  next();
+}
 
-app.post('/api/admin/login', (req, res) => {
-  const { username, password } = req.body || {};
-  if (username === ADMIN_USER && password === ADMIN_PASS) {
-    return res.json({ ok: true });
+app.post('/api/admin/login', async (req, res) => {
+  const { username, password, roomCode } = req.body || {};
+  const { data: room, error } = await supabase.from('rooms').select('id, admin_password, admin_username').eq('room_code', roomCode).single();
+  
+  if (room && room.admin_username === username && room.admin_password === password) {
+    return res.json({ ok: true, roomId: room.id });
   }
   return res.status(401).json({ ok: false, message: 'Invalid admin credentials' });
 });
@@ -62,7 +78,7 @@ app.post('/api/buzz', async (req, res) => {
       buzzed_team_id: teamId, 
       buzzed_at: new Date().toISOString() 
     })
-    .eq('id', 1)
+    .eq('room_id', req.roomId)
     .eq('buzzer_locked', false)
     .select();
 
@@ -78,7 +94,7 @@ app.post('/api/buzz', async (req, res) => {
   }
 });
 
-app.post('/api/admin/state', async (req, res) => {
+app.post('/api/admin/state', requireAdmin, async (req, res) => {
   const newState = req.body;
   
   const updateData = { flash_type: null, flash_timestamp: null };
@@ -106,16 +122,16 @@ app.post('/api/admin/state', async (req, res) => {
   const { error } = await supabase
     .from('game_state')
     .update(updateData)
-    .eq('id', 1);
+    .eq('room_id', req.roomId);
 
   if (error) return res.status(500).json({ ok: false, message: error.message });
   res.json({ ok: true });
 });
 
-app.post('/api/admin/flash', async (req, res) => {
+app.post('/api/admin/flash', requireAdmin, async (req, res) => {
   const { type } = req.body; // 'green' or 'red'
   
-  const { data: state, error: errState } = await supabase.from('game_state').select('*').eq('id', 1).single();
+  const { data: state, error: errState } = await supabase.from('game_state').select('*').eq('room_id', req.roomId).single();
   if (errState) return res.status(500).json({ ok: false, message: errState.message });
 
   // Auto-score logic based on rules
@@ -157,13 +173,13 @@ app.post('/api/admin/flash', async (req, res) => {
       flash_type: type, 
       flash_timestamp: Date.now() 
     })
-    .eq('id', 1);
+    .eq('room_id', req.roomId);
 
   if (error) return res.status(500).json({ ok: false, message: error.message });
   res.json({ ok: true });
 });
 
-app.post('/api/admin/team-assign', async (req, res) => {
+app.post('/api/admin/team-assign', requireAdmin, async (req, res) => {
   const { teamId, assignedRound, assignedBatch } = req.body;
   const { error } = await supabase.from('teams')
     .update({ assigned_round: assignedRound, assigned_batch: assignedBatch })
@@ -172,7 +188,7 @@ app.post('/api/admin/team-assign', async (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/admin/score', async (req, res) => {
+app.post('/api/admin/score', requireAdmin, async (req, res) => {
   const { teamId, amount } = req.body;
   
   // Get current score
@@ -205,7 +221,7 @@ app.post('/api/reset-data', async (req, res) => {
     active_linkup_round_id: null,
     linkup_revealed: false,
     linkup_clue_index: 0
-  }).eq('id', 1);
+  }).eq('room_id', req.roomId);
 
   res.json({ ok: true });
 });
@@ -234,11 +250,17 @@ app.post('/api/linkup/rounds/delete', async (req, res) => {
 });
 
 app.get('/api/initial-state', async (req, res) => {
+  const roomCode = req.query.room;
+  if (!roomCode) return res.status(400).json({ ok: false, message: 'Room code required' });
+  const { data: room } = await supabase.from('rooms').select('id').eq('room_code', roomCode).single();
+  if (!room) return res.status(404).json({ ok: false, message: 'Room not found' });
+  req.roomId = room.id;
+
   // Fetch initial data for clients who just connected
   const [teamsRes, membersRes, stateRes, linkupRes] = await Promise.all([
-    supabase.from('teams').select('*').order('joined_at', { ascending: true }),
-    supabase.from('team_members').select('*'),
-    supabase.from('game_state').select('*').eq('id', 1).single(),
+    supabase.from('teams').select('*').eq('room_id', req.roomId).order('joined_at', { ascending: true }),
+    supabase.from('team_members').select('*').eq('room_id', req.roomId),
+    supabase.from('game_state').select('*').eq('room_id', req.roomId).single(),
     supabase.from('linkup_rounds').select('*').order('order_index', { ascending: true })
   ]);
 

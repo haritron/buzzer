@@ -212,6 +212,21 @@
 			.presenter-controls .btn { padding: 6px 10px; }
 			.shortcut-hint { font-size: 10px; }
 		}
+	
+		/* Presenter Selection Modal */
+		.modal-overlay {
+			position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+			background: rgba(0,0,0,0.5); display: none; place-items: center; z-index: 1000;
+		}
+		.modal-overlay.active { display: grid; }
+		.modal-content {
+			background: white; padding: 24px; border-radius: 12px;
+			width: 90%; max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+		}
+		.modal-content h2 { margin: 0 0 16px 0; font-size: 20px; }
+		.modal-content select { width: 100%; margin-bottom: 16px; padding: 10px; font-size: 16px; border-radius: 6px; border: 1px solid #ccc; }
+		.modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
 	</style>
 </head>
 <body>
@@ -295,6 +310,13 @@
 	<!-- Main Script using Supabase -->
 	<script>
 		// Setup Supabase Client
+		const urlParams = new URLSearchParams(window.location.search);
+		const roomCode = urlParams.get('room');
+		if (!roomCode) { document.body.innerHTML = '<h1>Invalid Room</h1><p>Please provide a valid room code in the URL (e.g., ?room=room1)</p>'; throw new Error('No room code'); }
+		const roomPassword = localStorage.getItem('room_password') || prompt('Enter admin password for ' + roomCode + ':');
+		localStorage.setItem('room_password', roomPassword);
+		let currentRoomId = null;
+
 		const SUPABASE_URL = localStorage.getItem('supabaseUrl') || 'https://lbdpaedflraegmyeyiat.supabase.co';
 		const SUPABASE_KEY = localStorage.getItem('supabaseKey') || 'sb_publishable_fc7Gs9mzlB7IrVS-PyijdQ_isJxONfg';
 		
@@ -318,13 +340,20 @@
 		
 		// Initialize Data from Backend
 		async function initData() {
+			const { data: roomData } = await supabaseClient.from('rooms').select('id').eq('room_code', roomCode).single();
+			if (!roomData) { document.body.innerHTML = '<h1>Invalid Room</h1>'; return; }
+			currentRoomId = roomData.id;
+
 			try {
-				const res = await fetch('/api/initial-state');
-				const data = await res.json();
-				if(data.ok) {
-					rounds = data.linkupRounds || [];
+				const [linkupRes, stateRes] = await Promise.all([
+					supabaseClient.from('linkup_rounds').select('*').order('order_index', { ascending: true }),
+					supabaseClient.from('game_state').select('*').eq('room_id', currentRoomId).single()
+				]);
+				
+				if (!linkupRes.error && !stateRes.error) {
+					rounds = linkupRes.data || [];
 					
-					const state = data.state || {};
+					const state = stateRes.data || {};
 					activeRoundId = state.active_linkup_round_id || null;
 					revealed = state.linkup_revealed || false;
 					clueRevealIndex = state.linkup_clue_index || 0;
@@ -363,14 +392,11 @@
 		}
 
 		async function saveState() {
-			await fetch('/api/admin/state', {
-				method: 'POST', headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ 
-					activeLinkupRoundId: activeRoundId, 
-					linkupRevealed: revealed,
-					linkupClueIndex: clueRevealIndex
-				})
-			});
+			await supabaseClient.from('game_state').update({ 
+				active_linkup_round_id: activeRoundId, 
+				linkup_revealed: revealed,
+				linkup_clue_index: clueRevealIndex
+			}).eq('room_id', currentRoomId);
 		}
 
 		function getActiveRound() {
@@ -456,15 +482,15 @@
 			
 			images.forEach((image, index) => {
 				const item = rawImages[index];
-				const hasImage = Boolean(item && item.trim && item.trim() !== '');
-				image.src = hasImage ? item : '';
+				const hasImage = Boolean(item && typeof item === 'string' && item.trim() !== '');
+				image.src = hasImage ? getImageUrl(item) : '';
 				image.parentElement.hidden = !hasImage;
 				image.parentElement.classList.toggle('is-hidden', round.reveal_mode === 'oneByOne' && index > clueRevealIndex);
 			});
 			
 			$('presentAnswer').textContent = revealed ? round.answer : 'Answer hidden · think out loud with your team';
 			$('presentAnswer').classList.toggle('reveal', revealed);
-			$('presentAnswerImage').src = round.answer_image || '';
+			$('presentAnswerImage').src = round.answer_image ? getImageUrl(round.answer_image) : '';
 		}
 
 		
@@ -531,19 +557,64 @@
 		});
 		$('clearFormBtn').addEventListener('click', clearForm);
 		
-		document.querySelectorAll('.upload-box input').forEach(input => input.addEventListener('change', event => { 
+		async function compressImage(file) {
+			return new Promise((resolve) => {
+				const reader = new FileReader();
+				reader.onload = (e) => {
+					const img = new Image();
+					img.onload = () => {
+						const canvas = document.createElement('canvas');
+						const MAX = 1920;
+						let w = img.width, h = img.height;
+						if (w > h && w > MAX) { h *= MAX / w; w = MAX; }
+						else if (h > MAX) { w *= MAX / h; h = MAX; }
+						canvas.width = w; canvas.height = h;
+						canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+						canvas.toBlob((blob) => resolve(new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".webp", { type: 'image/webp' })), 'image/webp', 0.8);
+					};
+					img.src = e.target.result;
+				};
+				reader.readAsDataURL(file);
+			});
+		}
+
+		async function uploadToSupabase(file, roundId) {
+			const filename = `${Date.now()}_${Math.random().toString(36).substring(7)}.webp`;
+			const path = `slides/${roundId || 'temp'}/${filename}`;
+			const res = await fetch('/api/admin/get-upload-url', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-room-code': roomCode, 'x-room-password': roomPassword }, body: JSON.stringify({ path }) });
+			const data = await res.json();
+			if (!data.ok) throw new Error('Could not get upload URL');
+			const { error } = await supabaseClient.storage.from('linkup_images').uploadToSignedUrl(data.path, data.token, file);
+			if (error) throw error;
+			return path;
+		}
+
+		async function deleteImages(paths) {
+			const validPaths = paths.filter(p => typeof p === 'string' && p.startsWith('slides/'));
+			if (!validPaths.length) return;
+			await fetch('/api/admin/delete-images', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-room-code': roomCode, 'x-room-password': roomPassword }, body: JSON.stringify({ paths: validPaths }) });
+		}
+
+		function getImageUrl(pathOrBase64) {
+			if (!pathOrBase64) return '';
+			if (pathOrBase64.startsWith('data:') || pathOrBase64.startsWith('http')) return pathOrBase64;
+			return supabaseClient.storage.from('linkup_images').getPublicUrl(pathOrBase64).data.publicUrl;
+		}
+
+		document.querySelectorAll('.upload-box input').forEach(input => input.addEventListener('change', async event => { 
 			const file = event.target.files[0]; 
 			if (!file) return; 
-			const reader = new FileReader(); 
-			reader.onload = () => { 
-				if (input.id === 'answerImage') { 
-					answerImageData = reader.result; $('answerImageLabel').textContent = file.name; 
-				} else { 
-					const index = Number(input.id.replace('image', '').replace('One', '1').replace('Two', '2').replace('Three', '3').replace('Four', '4')) - 1; 
-					imageData[index] = reader.result; $(`${input.id}Label`).textContent = file.name; 
-				} 
-			}; 
-			reader.readAsDataURL(file); 
+			if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) return toast('Only JPG, PNG, and WebP allowed');
+			if (file.size > 10 * 1024 * 1024) return toast('File must be under 10MB');
+
+			const compressedFile = await compressImage(file);
+
+			if (input.id === 'answerImage') { 
+				answerImageData = compressedFile; $('answerImageLabel').textContent = file.name; 
+			} else { 
+				const index = Number(input.id.replace('image', '').replace('One', '1').replace('Two', '2').replace('Three', '3').replace('Four', '4')) - 1; 
+				imageData[index] = compressedFile; $(`${input.id}Label`).textContent = file.name; 
+			} 
 		}));
 		
 		$('imageCountInput').addEventListener('change', syncImageBoxes);
@@ -553,47 +624,93 @@
 			event.preventDefault(); 
 			const slideType = $('slideType').value; 
 			const imageCount = Math.max(0, Math.min(4, Number($('imageCountInput').value || 0))); 
-			const images = imageData.slice(0, imageCount).map((image) => image || null); 
-			while (images.length < 4) images.push(null); 
+			let finalImages = [...imageData.slice(0, imageCount)];
+			let finalAnswerImage = answerImageData;
 			
-			const roundData = { 
-				id: editingId,
-				round_name: $('roundNameInput').value.trim(), 
-				batch_name: $('batchNameInput').value.trim(), 
-				slide_type: slideType, 
-				theme: $('slideTheme').value, 
-				question: $('questionInput').value.trim(), 
-				answer: $('answerInput').value.trim(), 
-				reveal_mode: $('revealMode').value, 
-				images, 
-				answer_image: answerImageData,
-				order_index: editingId ? (rounds.find(r=>r.id===editingId)?.order_index || rounds.length) : rounds.length
-			}; 
-			
-			const res = await fetch('/api/linkup/rounds', {
-				method: 'POST',
-				headers: {'Content-Type': 'application/json'},
-				body: JSON.stringify(roundData)
-			});
-			const data = await res.json();
+			toast('Saving slide (this may take a moment to upload images)...');
 
-			if (data.ok) {
-				activeRoundId = data.round.id;
+			try {
+				// Upload any new files
+				for (let i = 0; i < finalImages.length; i++) {
+					if (finalImages[i] instanceof File) finalImages[i] = await uploadToSupabase(finalImages[i], editingId || 'new');
+				}
+				while (finalImages.length < 4) finalImages.push(null);
+				
+				if (finalAnswerImage instanceof File) {
+					finalAnswerImage = await uploadToSupabase(finalAnswerImage, editingId || 'new');
+				}
+
+				// Find replaced images to delete
+				if (editingId) {
+					const oldRound = rounds.find(r => r.id === editingId);
+					const pathsToDelete = [];
+					if (oldRound) {
+						oldRound.images.forEach((img, i) => {
+							if (img && typeof finalImages[i] === 'string' && finalImages[i] !== img) pathsToDelete.push(img);
+							if (img && finalImages[i] instanceof File) pathsToDelete.push(img);
+							if (img && i >= imageCount) pathsToDelete.push(img);
+						});
+						if (oldRound.answer_image && finalAnswerImage !== oldRound.answer_image && typeof finalAnswerImage === 'string') pathsToDelete.push(oldRound.answer_image);
+						if (oldRound.answer_image && finalAnswerImage instanceof File) pathsToDelete.push(oldRound.answer_image);
+						if (oldRound.answer_image && !finalAnswerImage) pathsToDelete.push(oldRound.answer_image);
+					}
+					if (pathsToDelete.length) deleteImages(pathsToDelete);
+				}
+
+				const roundData = { 
+					round_name: $('roundNameInput').value.trim(), 
+					batch_name: $('batchNameInput').value.trim(), 
+					slide_type: slideType, 
+					theme: $('slideTheme').value, 
+					question: $('questionInput').value.trim(), 
+					answer: $('answerInput').value.trim(), 
+					reveal_mode: $('revealMode').value, 
+					images: finalImages, 
+					answer_image: finalAnswerImage,
+					order_index: editingId ? (rounds.find(r=>r.id===editingId)?.order_index || rounds.length) : rounds.length
+				};
+				let result;
+				if (roundData.id) {
+					result = await supabaseClient.from('linkup_rounds').update({
+						round_name: roundData.round_name,
+						batch_name: roundData.batch_name,
+						slide_type: roundData.slide_type,
+						theme: roundData.theme,
+						question: roundData.question,
+						answer: roundData.answer,
+						reveal_mode: roundData.reveal_mode,
+						images: roundData.images,
+						answer_image: roundData.answer_image,
+						order_index: roundData.order_index
+					}).eq('id', roundData.id).select().single();
+				} else {
+					result = await supabaseClient.from('linkup_rounds').insert([roundData]).select().single();
+				}
+
+				if (result.error) throw result.error;
+
+				activeRoundId = result.data.id;
 				revealed = false; 
 				clueRevealIndex = 0; 
 				saveState(); 
-				clearForm(data.round.round_name, data.round.batch_name); 
-				toast(`${slideLabels[slideType]} saved in ${data.round.round_name}`);
+				clearForm(result.data.round_name, result.data.batch_name); 
+				toast(`${slideLabels[slideType]} saved in ${result.data.round_name}`);
+			} catch (e) {
+				console.error(e);
+				toast('Error saving round. It may be too large.');
 			}
 		});
 
 		$('roundList').addEventListener('click', async event => { 
 			const deleteButton = event.target.closest('[data-delete]'); 
 			if (deleteButton) { 
-				await fetch('/api/linkup/rounds/delete', {
-					method: 'POST', headers: {'Content-Type':'application/json'},
-					body: JSON.stringify({id: deleteButton.dataset.delete})
-				});
+				const id = deleteButton.dataset.delete;
+				const round = rounds.find(r => String(r.id) === String(id));
+				if (round) {
+					const pathsToDelete = [...(round.images || []), round.answer_image].filter(Boolean);
+					if (pathsToDelete.length) await deleteImages(pathsToDelete);
+				}
+				await supabaseClient.from('linkup_rounds').delete().eq('id', id);
 				toast('Round deleted'); return; 
 			} 
 			const editButton = event.target.closest('[data-edit]'); 
@@ -605,7 +722,78 @@
 			saveState(); 
 		});
 		
-		$('presentBtn').addEventListener('click', () => show('presenterView'));
+		$('presentBtn').addEventListener('click', openPresenterModal);
+
+	// Presenter Modal Logic
+	function openPresenterModal() {
+		const roundSelect = $('presenterRoundSelect');
+		const batchSelect = $('presenterBatchSelect');
+		roundSelect.innerHTML = '';
+		batchSelect.innerHTML = '';
+		
+		const roundsList = [...new Set(rounds.map(r => r.round_name))];
+		if(roundsList.length === 0) {
+			alert('Please create a round first!');
+			return;
+		}
+		
+		roundsList.forEach(r => {
+			const opt = document.createElement('option');
+			opt.value = r; opt.textContent = r;
+			roundSelect.appendChild(opt);
+		});
+		
+		roundSelect.onchange = () => {
+			batchSelect.innerHTML = '';
+			const batches = [...new Set(rounds.filter(r => r.round_name === roundSelect.value).map(r => r.batch_name))];
+			batches.forEach(b => {
+				const opt = document.createElement('option');
+				opt.value = b; opt.textContent = b;
+				batchSelect.appendChild(opt);
+			});
+		};
+		roundSelect.onchange(); // trigger initial populate
+		$('presenterModal').classList.add('active');
+	}
+	
+	function closePresenterModal() {
+		$('presenterModal').classList.remove('active');
+	}
+	
+	async function startPresentation() {
+		const round_name = $('presenterRoundSelect').value;
+		const batch_name = $('presenterBatchSelect').value;
+		
+		// Map round_name and batch_name to integer active_round and active_batch
+		// Assuming round_name like "Round 1" and batch_name like "Batch 1"
+		const roundMatch = round_name.match(/\d+/);
+		const batchMatch = batch_name.match(/\d+/);
+		
+		const active_round = roundMatch ? parseInt(roundMatch[0]) : 1;
+		const active_batch = batchMatch ? parseInt(batchMatch[0]) : 1;
+		
+		// Find the first linkup_round ID to set active_linkup_round_id
+		const roundObj = rounds.find(r => r.round_name === round_name && r.batch_name === batch_name);
+		const active_linkup_round_id = roundObj ? roundObj.id : null;
+		
+		try {
+			const res = await fetch('/api/admin/game-state', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', 'x-room-code': currentRoomId },
+				body: JSON.stringify({ active_round, active_batch, active_linkup_round_id, linkup_clue_index: 0, linkup_revealed: false })
+			});
+			if(res.ok) {
+				closePresenterModal();
+				show('presenterView');
+				present(active_linkup_round_id);
+			} else {
+				alert("Failed to start presentation");
+			}
+		} catch(err) {
+			console.error(err);
+		}
+	}
+
 		
 		function revealAnswer() { 
 			if (!activeRoundId) return toast('Add a round first'); 
@@ -654,5 +842,20 @@
             show('adminView');
 		}
 	</script>
+
+	<!-- Presenter Selection Modal -->
+	<div class="modal-overlay" id="presenterModal">
+		<div class="modal-content">
+			<h2>Start Presentation</h2>
+			<p>Select which round and batch to present in your room:</p>
+			<select id="presenterRoundSelect"></select>
+			<select id="presenterBatchSelect"></select>
+			<div class="modal-actions">
+				<button class="btn btn-quiet" onclick="closePresenterModal()">Cancel</button>
+				<button class="btn btn-primary" onclick="startPresentation()">Present</button>
+			</div>
+		</div>
+	</div>
+
 </body>
 </html>
