@@ -131,11 +131,19 @@ async function createNewRoom() {
     const res = await fetch('/api/rooms/create', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ adminId })
-    }).then(r => r.json());
-    if (res.ok) {
-      window.location.search = '?room=' + res.roomCode;
+    });
+    
+    if (res.status === 401) {
+      alert("Your session has expired or is invalid. Please log in again.");
+      logoutGlobalAdmin();
+      return;
+    }
+    
+    const data = await res.json();
+    if (data.ok) {
+      window.location.search = '?room=' + data.roomCode;
     } else {
-      alert(res.message);
+      alert(data.message);
     }
   } catch(e) {
     alert("Failed to create room.");

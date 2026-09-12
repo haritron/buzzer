@@ -76,7 +76,7 @@ app.post('/api/admin/login', async (req, res) => {
   return res.json({ ok: true, adminId, username });
 });
 
-app.post('/api/rooms/create', async (req, res) => {
+app.post('/api/rooms/create', requireGlobalAdmin, async (req, res) => {
   const { adminId } = req.body;
   if (!adminId) return res.status(400).json({ ok: false, message: 'Admin ID required' });
 
@@ -99,7 +99,11 @@ app.post('/api/rooms/create', async (req, res) => {
         roomId = newRoom.id;
         roomCreated = true;
         break;
+      } else {
+        console.error("Room creation error/no room returned. Error:", error, "newRoom:", newRoom);
       }
+    } else {
+        console.error("Room already exists? existing:", existing);
     }
   }
 
