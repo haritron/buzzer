@@ -151,7 +151,8 @@
 		.clue { min-width: 0; min-height: 0; width: min(100%, 480px); height: clamp(170px, 24vh, 300px); overflow: hidden; border: 4px solid var(--clue-border); background: var(--clue-bg); border-radius: 12px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.10); margin: 0 auto; display: block; }
 		.clue[hidden] { display: none; }
 		.clue img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center; background: var(--clue-image-bg); }
-		.presenter.answer-visible .clue { height: clamp(150px, 16vh, 250px); }
+		.presenter.answer-visible .clue { height: clamp(150px, 22vh, 300px); }
+		.presenter.answer-visible .clues.layout-1 .clue { height: clamp(200px, 32vh, 450px); width: min(100%, 700px); }
 		.presenter.answer-visible .clues { gap: 12px; margin-top: 2px; }
 		.presenter.answer-visible .answer-box { margin-top: 6px; }
 		.presenter.answer-visible .answer-image { width: min(560px, 45vw); height: min(20vh, 200px); margin-top: 2px; }
@@ -224,49 +225,18 @@
 			<div class="eyebrow">Picture the link</div>
 			<h1>One question.<br>Four clues.<br>One connection.</h1>
 			<p class="lede">Host a beautifully simple connection round. Add your images and question, invite teams in, then reveal the answer when the room is ready.</p>
-			<div class="role-grid">
+			<div class="role-grid" style="grid-template-columns: 1fr; max-width: 400px;">
 				<section class="role-card">
 					<div class="role-icon">✦</div>
 					<h2>Host the game</h2>
-					<p>Create rounds, upload four clue images, manage teams, and control the presenter screen.</p>
+					<p>Create rounds, upload four clue images, and control the presenter screen.</p>
 					<button class="btn btn-primary" data-view="adminView">Open host dashboard</button>
                     <a href="/index.html" class="btn btn-quiet" style="display:inline-block; text-decoration:none; margin-top:8px;">Back to Main Buzzer</a>
 				</section>
-				<section class="role-card">
-					<div class="role-icon">♧</div>
-					<h2>Join a team</h2>
-					<p>Enter your team name and player name. No account or editing access is needed.</p>
-					<button class="btn btn-coral" data-view="joinView">Join the game</button>
-				</section>
 			</div>
 		</main>
 
-		<main id="joinView" class="view" hidden>
-			<div class="join-wrap">
-				<span class="back-link" data-view="homeView">← Back to start</span>
-				<div class="eyebrow">Team entrance</div>
-				<h1>Find your connection.</h1>
-				<p class="lede">Tell the host who is playing. The host will see your team on their scoreboard.</p>
-				<form id="joinForm">
-					<div class="field"><label for="teamName">Team name</label><input id="teamName" required placeholder="The Bright Sparks"></div>
-					<div class="field"><label for="playerName">Your name</label><input id="playerName" required placeholder="Your name"></div>
-					<button class="btn btn-coral" type="submit">Enter the room →</button>
-				</form>
-			</div>
-		</main>
-
-		<main id="teamView" class="view" hidden>
-			<div class="dashboard-head">
-				<div><div class="eyebrow">Team room</div><h1 id="teamWelcome">You are playing.</h1></div>
-				<div class="header-actions"><button id="teamExitBtn" class="btn btn-quiet">Exit team view</button><button id="teamPresenterBtn" class="btn btn-primary">Show question screen ↗</button></div>
-			</div>
-			<section class="panel">
-				<div class="panel-head"><h2 id="teamRoundLabel">Current question</h2><span id="teamAnswerStatus">Waiting</span></div>
-				<div id="teamQuestion" class="team-question">The host has not started a question yet.</div>
-				<form id="teamAnswerForm" class="team-answer-form"><input id="teamAnswerInput" required placeholder="Type your team answer"><button class="btn btn-coral" type="submit">Submit answer</button></form>
-				<p style="color:var(--muted);font-family:Arial,sans-serif;font-size:12px">The host will decide whether your answer is correct.</p>
-			</section>
-		</main>
+		<!-- Removed joinView and teamView -->
 
 		<main id="adminView" class="view" hidden>
 			<div class="dashboard-head">
@@ -299,10 +269,7 @@
 						<div class="form-actions"><button id="clearFormBtn" class="btn btn-quiet" type="button">Clear</button><button class="btn btn-primary" type="submit">Save round</button></div>
 					</form>
 				</aside>
-				<section class="panel">
-						<div class="panel-head"><h2>Teams and answers</h2><span id="teamCount">0 teams</span></div>
-					<div id="scoreboard" class="scoreboard"><div class="empty">Teams will appear here when they join.</div></div>
-				</section>
+				<!-- Removed Teams and Answers Panel -->
 				<section class="panel">
 						<div class="panel-head"><h2>Game control</h2><span><b id="currentRoundLabel">—</b></span></div>
 					<p style="color:var(--muted);margin-top:0">The presenter screen shows the active question and clues. Keep the answer hidden until teams have submitted.</p>
@@ -331,7 +298,7 @@
 		const SUPABASE_URL = localStorage.getItem('supabaseUrl') || 'https://lbdpaedflraegmyeyiat.supabase.co';
 		const SUPABASE_KEY = localStorage.getItem('supabaseKey') || 'sb_publishable_fc7Gs9mzlB7IrVS-PyijdQ_isJxONfg';
 		
-		const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+		const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 		const placeholderOne = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500"%3E%3Crect width="800" height="500" fill="%23087f79"/%3E%3Ctext x="400" y="260" text-anchor="middle" fill="white" font-size="34" font-family="Georgia"%3EClue image 1%3C/text%3E%3C/svg%3E';
 		const placeholderTwo = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500"%3E%3Crect width="800" height="500" fill="%23ef6e5b"/%3E%3Ctext x="400" y="260" text-anchor="middle" fill="white" font-size="34" font-family="Georgia"%3EClue image 2%3C/text%3E%3C/svg%3E';
@@ -340,14 +307,12 @@
 		const slideLabels = { connection: 'Connection question', greeting: 'Greeting', break: 'Break', windup: 'Wind-up / closing', custom: 'Custom announcement' };
 		
 		let rounds = [];
-		let teams = [];
 		let activeRoundId = null;
 		let editingId = null;
 		let revealed = false;
 		let clueRevealIndex = 0;
 		let imageData = [null, null, null, null];
 		let answerImageData = null;
-		let currentTeamId = localStorage.getItem('linkup-current-team') || '';
 
 		const $ = id => document.getElementById(id);
 		
@@ -358,7 +323,6 @@
 				const data = await res.json();
 				if(data.ok) {
 					rounds = data.linkupRounds || [];
-					teams = data.teams || [];
 					
 					const state = data.state || {};
 					activeRoundId = state.active_linkup_round_id || null;
@@ -367,21 +331,19 @@
 
 					renderAdmin();
 					renderPresenter();
-					renderTeamView();
 				}
 			} catch(e) {
 				console.error('Init data error', e);
 			}
 
 			// Supabase Realtime Listener
-			supabase.channel('public:*')
+			supabaseClient.channel('public:*')
 				.on('postgres_changes', { event: '*', schema: 'public', table: 'game_state' }, payload => {
 					if (payload.new.id === 1) {
 						activeRoundId = payload.new.active_linkup_round_id;
 						revealed = payload.new.linkup_revealed;
 						clueRevealIndex = payload.new.linkup_clue_index;
 						renderPresenter();
-						renderTeamView();
 						renderAdmin();
 					}
 				})
@@ -396,17 +358,6 @@
 					rounds.sort((a,b) => a.order_index - b.order_index);
 					renderAdmin();
 					renderPresenter();
-				})
-				.on('postgres_changes', { event: '*', schema: 'public', table: 'teams' }, payload => {
-					if (payload.eventType === 'INSERT') teams.push(payload.new);
-					else if (payload.eventType === 'UPDATE') {
-						const i = teams.findIndex(t => t.id === payload.new.id);
-						if (i > -1) teams[i] = payload.new;
-					} else if (payload.eventType === 'DELETE') {
-                        teams = teams.filter(t => t.id !== payload.old.id);
-                    }
-					renderAdmin();
-					renderTeamView();
 				})
 				.subscribe();
 		}
@@ -432,7 +383,6 @@
 			document.body.classList.toggle('presenting', id === 'presenterView'); 
 			if (id === 'adminView') renderAdmin(); 
 			if (id === 'presenterView') renderPresenter(); 
-			if (id === 'teamView') renderTeamView(); 
 		}
 		function toast(message) { 
 			const el = $('toast'); el.textContent = message; el.classList.add('show'); 
@@ -452,9 +402,6 @@
 				}, {}); 
 				return `<section class="round-group"><div class="round-group-head"><h3>${escapeHtml(name)}</h3><span>${questions.length} question${questions.length === 1 ? '' : 's'} · ${Object.keys(batches).length} batch${Object.keys(batches).length === 1 ? '' : 'es'}</span></div>${Object.entries(batches).map(([batchName, batchQuestions]) => `<div class="batch-group"><div class="batch-head"><strong>${escapeHtml(batchName)}</strong><span>${batchQuestions.length} question${batchQuestions.length === 1 ? '' : 's'}</span></div>${batchQuestions.map(({ round, index }, questionIndex) => `<div class="round-item ${round.id === activeRoundId ? 'active' : ''}" data-id="${round.id}" draggable="true" data-drag-index="${index}"><span class="drag-handle" aria-hidden="true">⋮⋮</span><span class="round-number">${questionIndex + 1}</span><div class="round-summary">${escapeHtml(round.question)}<small>${escapeHtml(slideLabels[round.slide_type || 'connection'])} · ${escapeHtml(round.answer || '')}</small></div><button class="edit-round" data-edit="${round.id}" aria-label="Edit slide">✎</button><button class="delete-round" data-delete="${round.id}" aria-label="Delete question">×</button></div>`).join('')}</div>`).join('')}</section>`; 
 			}).join('') : '<div class="empty">No rounds yet. Add your first connection question.</div>';
-			
-			$('teamCount').textContent = `${teams.length} team${teams.length === 1 ? '' : 's'}`;
-			$('scoreboard').innerHTML = teams.length ? teams.map(team => `<div class="team-row"><div><strong>${escapeHtml(team.team_name)}</strong><small>Score: ${team.score}</small></div><span class="score">${team.score || 0}</span></div>`).join('') : '<div class="empty">Teams will appear here when they join.</div>';
 			
 			const actRnd = getActiveRound();
 			$('currentRoundLabel').textContent = actRnd ? `${actRnd.round_name || 'Round 1'} · ${actRnd.batch_name || 'Batch 1'}` : '—';
@@ -520,14 +467,7 @@
 			$('presentAnswerImage').src = round.answer_image || '';
 		}
 
-		function renderTeamView() { 
-			const team = teams.find(item => item.id === currentTeamId); 
-			const round = getActiveRound(); 
-			if (!team) return; // Wait for join
-			$('teamWelcome').textContent = `${team.team_name}`; 
-			$('teamRoundLabel').textContent = round ? `${round.round_name || 'Round 1'} · ${round.batch_name || 'Batch 1'}` : 'Waiting for question'; 
-			$('teamQuestion').textContent = round ? round.question : 'The host has not started a question yet.'; 
-		}
+		
 
 		function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char])); }
 		function syncImageBoxes() {
@@ -706,31 +646,13 @@
 			else if (event.key === 'Escape') { show('adminView'); } 
 		});
 
-		$('joinForm').addEventListener('submit', async event => { 
-			event.preventDefault(); 
-			const res = await fetch('/api/teams/join', {
-				method: 'POST', headers: {'Content-Type': 'application/json'},
-				body: JSON.stringify({ teamName: $('teamName').value.trim(), memberName: $('playerName').value.trim() })
-			});
-			const data = await res.json();
-			if(data.ok) {
-				currentTeamId = data.team.id; 
-				localStorage.setItem('linkup-current-team', currentTeamId); 
-				$('joinForm').reset(); toast('You are in the room'); show('teamView');
-			}
-		});
 
-		$('teamExitBtn').addEventListener('click', () => { currentTeamId = ''; localStorage.removeItem('linkup-current-team'); show('homeView'); });
-		$('teamPresenterBtn').addEventListener('click', () => show('presenterView'));
-		
 		initData();
 		
 		if (localStorage.getItem('admin') === 'true') {
 			// Auto login if admin
             show('adminView');
-		} else if (currentTeamId) {
-            show('teamView');
-        }
+		}
 	</script>
 </body>
 </html>

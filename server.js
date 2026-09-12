@@ -193,44 +193,6 @@ app.delete('/api/teams/:id', async (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/questions', async (req, res) => {
-  const { title } = req.body;
-  const { data, error } = await supabase.from('questions').insert([{ title }]).select().single();
-  if (error) return res.status(500).json({ ok: false, message: error.message });
-  res.json({ ok: true, question: data });
-});
-
-app.post('/api/slides', async (req, res) => {
-  const { questionId, slideOrder, background, transition } = req.body;
-  const { data, error } = await supabase.from('slides').insert([{ 
-    question_id: questionId, slide_order: slideOrder, background, transition 
-  }]).select().single();
-  if (error) return res.status(500).json({ ok: false, message: error.message });
-  res.json({ ok: true, slide: data });
-});
-
-app.post('/api/slide-elements', async (req, res) => {
-  const { slideId, elementType, content, properties, order } = req.body;
-  const { data, error } = await supabase.from('slide_elements').insert([{
-    slide_id: slideId, element_type: elementType, content, properties: properties || {}, element_order: order
-  }]).select().single();
-  if (error) return res.status(500).json({ ok: false, message: error.message });
-  res.json({ ok: true, element: data });
-});
-
-app.post('/api/slide-elements/clear', async (req, res) => {
-  const { slideId } = req.body;
-  const { error } = await supabase.from('slide_elements').delete().eq('slide_id', slideId);
-  if (error) return res.status(500).json({ ok: false, message: error.message });
-  res.json({ ok: true });
-});
-
-app.post('/api/delete-question', async (req, res) => {
-  const { id } = req.body;
-  await supabase.from('questions').delete().eq('id', id);
-  res.json({ ok: true });
-});
-
 app.post('/api/reset-data', async (req, res) => {
   // Clear teams and reset game state
   await supabase.from('teams').delete().neq('id', '00000000-0000-0000-0000-000000000000');
@@ -238,12 +200,8 @@ app.post('/api/reset-data', async (req, res) => {
     buzzer_locked: true,
     buzzed_team_id: null,
     buzzed_at: null,
-    current_question_id: null,
-    current_slide_index: 0,
     flash_type: null,
     flash_timestamp: null,
-    active_round: 1,
-    active_batch: 1,
     active_linkup_round_id: null,
     linkup_revealed: false,
     linkup_clue_index: 0
@@ -277,12 +235,9 @@ app.post('/api/linkup/rounds/delete', async (req, res) => {
 
 app.get('/api/initial-state', async (req, res) => {
   // Fetch initial data for clients who just connected
-  const [teamsRes, membersRes, questionsRes, slidesRes, elementsRes, stateRes, linkupRes] = await Promise.all([
+  const [teamsRes, membersRes, stateRes, linkupRes] = await Promise.all([
     supabase.from('teams').select('*').order('joined_at', { ascending: true }),
     supabase.from('team_members').select('*'),
-    supabase.from('questions').select('*').order('id', { ascending: true }),
-    supabase.from('slides').select('*').order('slide_order', { ascending: true }),
-    supabase.from('slide_elements').select('*').order('element_order', { ascending: true }),
     supabase.from('game_state').select('*').eq('id', 1).single(),
     supabase.from('linkup_rounds').select('*').order('order_index', { ascending: true })
   ]);
@@ -291,9 +246,6 @@ app.get('/api/initial-state', async (req, res) => {
     ok: true,
     teams: teamsRes.data || [],
     teamMembers: membersRes.data || [],
-    questions: questionsRes.data || [],
-    slides: slidesRes.data || [],
-    slideElements: elementsRes.data || [],
     linkupRounds: linkupRes.data || [],
     state: stateRes.data || {}
   });
