@@ -496,10 +496,7 @@
 						if (st.linkup_revealed !== undefined) revealed = st.linkup_revealed;
 						if (st.linkup_clue_index !== undefined) clueRevealIndex = st.linkup_clue_index;
 						
-					if (state.show_leaderboard) {
-						updateLeaderboard();
-						$('leaderboardOverlay').classList.add('show');
-					}
+
 
 					renderPresenter();
 						renderAdmin();
@@ -520,10 +517,7 @@
 					rounds.sort((a,b) => a.order_index - b.order_index);
 					renderAdmin();
 					
-					if (state.show_leaderboard) {
-						updateLeaderboard();
-						$('leaderboardOverlay').classList.add('show');
-					}
+
 
 					renderPresenter();
 				})
