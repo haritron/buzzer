@@ -40,6 +40,10 @@
       "dest": "/public/ranking.html"
     },
     {
+      "src": "/linkup.html",
+      "dest": "/public/linkup.html"
+    },
+    {
       "src": "/(.*)",
       "dest": "/public/index.html"
     }
