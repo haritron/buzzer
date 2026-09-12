@@ -213,6 +213,21 @@
 			.shortcut-hint { font-size: 10px; }
 		}
 	
+		
+		/* Buzzer Overlay Styles */
+		.flash-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; z-index: 2000; transition: opacity 0.5s ease; }
+		.flash-green { background: rgba(0, 255, 0, 0.4); opacity: 1; }
+		.flash-red { background: rgba(255, 0, 0, 0.4); opacity: 1; }
+		
+		.buzzer-overlay { position: fixed; top: 20%; left: 50%; transform: translateX(-50%) scale(0.8); background: rgba(0, 0, 0, 0.85); color: #fff; padding: 30px 60px; border-radius: 20px; box-shadow: 0 10px 50px rgba(0,0,0,0.5); text-align: center; opacity: 0; pointer-events: none; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 2100; }
+		.buzzer-overlay.show { opacity: 1; transform: translateX(-50%) scale(1); }
+		.buzzer-text { font-size: 24px; font-weight: bold; color: var(--presenter-accent, #f7ca62); text-transform: uppercase; letter-spacing: 4px; margin-bottom: 10px; }
+		.buzzer-name { font-size: 64px; font-weight: 900; letter-spacing: -2px; }
+
+		.result-overlay { position: fixed; bottom: 10%; left: 50%; transform: translateX(-50%) scale(0.5); font-size: 80px; font-weight: 900; letter-spacing: -2px; text-transform: uppercase; color: #fff; text-shadow: 0 5px 20px rgba(0,0,0,0.5); opacity: 0; pointer-events: none; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 2200; }
+		.result-overlay.correct { color: #4ade80; opacity: 1; transform: translateX(-50%) scale(1); }
+		.result-overlay.wrong { color: #f87171; opacity: 1; transform: translateX(-50%) scale(1); }
+
 		/* Presenter Selection Modal */
 		.modal-overlay {
 			position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -301,7 +316,17 @@
 				<div id="presentSpecial" class="special-slide" hidden><strong id="presentSpecialTitle">Greeting</strong><span id="presentSpecialMessage"></span></div>
 				<div id="presentClues" class="clues"><div class="clue"><img id="presentImageOne" alt="First clue"></div><div class="clue"><img id="presentImageTwo" alt="Second clue"></div><div class="clue"><img id="presentImageThree" alt="Third clue"></div><div class="clue"><img id="presentImageFour" alt="Fourth clue"></div></div>
 				<div id="presentAnswer" class="answer-box">Answer hidden · think out loud with your team</div><img id="presentAnswerImage" class="answer-image" alt="Answer image" hidden>
+				
 				<div class="shortcut-hint">← / → previous or next slide · Space reveal clue · R reveal answer · Esc host controls</div>
+				
+				<!-- Buzzer Elements -->
+				<div id="buzzerFlashOverlay" class="flash-overlay"></div>
+				<div id="buzzerTeamOverlay" class="buzzer-overlay">
+					<div class="buzzer-text">BUZZED IN!</div>
+					<div id="buzzedTeamName" class="buzzer-name"></div>
+				</div>
+				<div id="resultOverlay" class="result-overlay"></div>
+
 			</div>
 		</section>
 	</div>
@@ -319,49 +344,73 @@
 		let activeRoundId = null;
 		let revealed = false;
 		let clueRevealIndex = 0;
-		let $ = window.jQuery;
+		
+		let editingId = null;
+		let imageData = [null, null, null, null];
+		let answerImageData = null;
+
+		const placeholderOne = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><rect width='200' height='200' fill='%23eee'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-size='14' fill='%23999'>Clue 1</text></svg>";
+		const placeholderTwo = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><rect width='200' height='200' fill='%23eee'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-size='14' fill='%23999'>Clue 2</text></svg>";
+		const placeholderThree = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><rect width='200' height='200' fill='%23eee'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-size='14' fill='%23999'>Clue 3</text></svg>";
+		const placeholderFour = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><rect width='200' height='200' fill='%23eee'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='sans-serif' font-size='14' fill='%23999'>Clue 4</text></svg>";
+
+		const slideLabels = {
+			connection: 'Connection question',
+			greeting: 'Greeting',
+			break: 'Break',
+			windup: 'Wind-up / closing',
+			custom: 'Custom announcement'
+		};
+
+		const $ = id => document.getElementById(id);
 
 		const urlParams = new URLSearchParams(window.location.search);
 		const roomCode = urlParams.get('room');
-		if (!roomCode) {
-			document.body.innerHTML = `
-				<div style="display: grid; place-items: center; min-height: 100vh; background: var(--bg); font-family: 'Fraunces', serif;">
-					<div style="background: white; padding: 40px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 90%; max-width: 400px; text-align: center;">
-						<h1 style="margin: 0 0 10px 0; color: var(--primary);">LinkUp Game</h1>
-						<p style="color: #666; margin-bottom: 20px; font-family: -apple-system, system-ui, sans-serif;">Enter a Room Code to join or host.</p>
-						<form onsubmit="event.preventDefault(); window.location.search = '?room=' + document.getElementById('roomInput').value.trim().toUpperCase();">
-							<input id="roomInput" type="text" placeholder="Enter Room Code" required style="width: 100%; padding: 12px; margin-bottom: 16px; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; box-sizing: border-box; text-transform: uppercase;" />
-							<button type="submit" style="width: 100%; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 6px; font-size: 16px; cursor: pointer;">Enter Room</button>
-						</form>
-					</div>
-				</div>
-			`;
-		} else {
-			initLinkup();
-		}
+		
+		initLinkup();
 
 		async function initLinkup() {
-			const { data: roomData, error: roomError } = await supabaseClient.from('rooms').select('id').eq('room_code', roomCode).single();
-			if (roomError || !roomData) {
-				alert("Room not found");
-				window.location.search = '';
-				return;
+			if (roomCode) {
+				const { data: roomData, error: roomError } = await supabaseClient.from('rooms').select('id').eq('room_code', roomCode).single();
+				if (!roomError && roomData) {
+					currentRoomId = roomData.id;
+				}
 			}
-			currentRoomId = roomData.id;
 
 			try {
 				const [linkupRes, stateRes] = await Promise.all([
 					supabaseClient.from('linkup_rounds').select('*').order('order_index', { ascending: true }),
-					supabaseClient.from('game_state').select('*').eq('room_id', currentRoomId).single()
+					currentRoomId ? supabaseClient.from('game_state').select('*').eq('room_id', currentRoomId).single() : Promise.resolve({ data: {} })
 				]);
 				
-				if (!linkupRes.error && !stateRes.error) {
+				if (!linkupRes.error) {
 					rounds = linkupRes.data || [];
 					
+					
+					const { data: teamsData } = await supabaseClient.from('teams').select('*').eq('room_id', currentRoomId);
+					teamsList = teamsData || [];
+
+					supabaseClient.channel('public:teams')
+						.on('postgres_changes', { event: '*', schema: 'public', table: 'teams', filter: `room_id=eq.${currentRoomId}` }, payload => {
+							if (payload.eventType === 'INSERT') teamsList.push(payload.new);
+							if (payload.eventType === 'UPDATE') teamsList = teamsList.map(t => t.id === payload.new.id ? payload.new : t);
+							if (payload.eventType === 'DELETE') teamsList = teamsList.filter(t => t.id !== payload.old.id);
+						}).subscribe();
+
 					const state = stateRes.data || {};
 					activeRoundId = state.active_linkup_round_id || null;
 					revealed = state.linkup_revealed || false;
 					clueRevealIndex = state.linkup_clue_index || 0;
+
+					currentBuzzedTeamId = state.buzzed_team_id || null;
+					if (currentBuzzedTeamId) {
+						const team = teamsList.find(t => t.id === currentBuzzedTeamId);
+						if (team) {
+							$('buzzedTeamName').textContent = team.team_name;
+							$('buzzerTeamOverlay').classList.add('show');
+						}
+					}
+
 
 					renderAdmin();
 					renderPresenter();
@@ -371,14 +420,20 @@
 			}
 
 			// Supabase Realtime Listener
-			supabaseClient.channel('public:*')
-				.on('postgres_changes', { event: '*', schema: 'public', table: 'game_state', filter: `room_id=eq.${currentRoomId}` }, payload => {
-					activeRoundId = payload.new.active_linkup_round_id;
-					revealed = payload.new.linkup_revealed;
-					clueRevealIndex = payload.new.linkup_clue_index;
-					renderPresenter();
-					renderAdmin();
-				})
+			if (currentRoomId) {
+				supabaseClient.channel('public:*')
+					.on('postgres_changes', { event: '*', schema: 'public', table: 'game_state', filter: `room_id=eq.${currentRoomId}` }, payload => {
+						const st = payload.new;
+						if (st.active_linkup_round_id !== undefined) activeRoundId = st.active_linkup_round_id;
+						if (st.linkup_revealed !== undefined) revealed = st.linkup_revealed;
+						if (st.linkup_clue_index !== undefined) clueRevealIndex = st.linkup_clue_index;
+						renderPresenter();
+						renderAdmin();
+					})
+					.subscribe();
+			}
+
+			supabaseClient.channel('public:linkup_rounds')
 				.on('postgres_changes', { event: '*', schema: 'public', table: 'linkup_rounds' }, payload => {
 					if (payload.eventType === 'INSERT') {
 						rounds.push(payload.new);
@@ -396,6 +451,7 @@
 		}
 
 		async function saveState() {
+			if (!currentRoomId) return;
 			await supabaseClient.from('game_state').update({ 
 				active_linkup_round_id: activeRoundId, 
 				linkup_revealed: revealed,
@@ -781,20 +837,31 @@
 		const active_linkup_round_id = roundObj ? roundObj.id : null;
 		
 		try {
-			const res = await fetch('/api/admin/game-state', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json', 'x-room-code': currentRoomId },
-				body: JSON.stringify({ active_round, active_batch, active_linkup_round_id, linkup_clue_index: 0, linkup_revealed: false })
-			});
-			if(res.ok) {
-				closePresenterModal();
-				show('presenterView');
-				present(active_linkup_round_id);
-			} else {
-				alert("Failed to start presentation");
+			if (currentRoomId) {
+				const { error } = await supabaseClient.from('game_state').update({
+					active_round, 
+					active_batch, 
+					active_linkup_round_id, 
+					linkup_clue_index: 0, 
+					linkup_revealed: false
+				}).eq('room_id', currentRoomId);
+				
+				if (error) {
+					throw error;
+				}
 			}
+			
+			activeRoundId = active_linkup_round_id;
+			revealed = false;
+			clueRevealIndex = 0;
+
+			closePresenterModal();
+			show('presenterView');
+			renderAdmin();
+			renderPresenter();
 		} catch(err) {
 			console.error(err);
+			alert("Failed to start presentation");
 		}
 	}
 
@@ -829,6 +896,40 @@
 		$('revealBtn').addEventListener('click', revealAnswer);
 		$('resetGameBtn').addEventListener('click', () => { revealed = false; clueRevealIndex = 0; saveState(); toast('Answer hidden again'); });
 		
+		
+		let teamsList = [];
+		let currentBuzzedTeamId = null;
+
+		async function handleBuzzerKeys(event) {
+			if ($('presenterView').hidden) return;
+			
+			const key = event.key.toLowerCase();
+			if (['g', 'w', 'c'].includes(key)) {
+				event.preventDefault();
+				
+				if (key === 'g') {
+					$('buzzerFlashOverlay').className = 'flash-overlay flash-green';
+					$('resultOverlay').className = 'result-overlay correct';
+					$('resultOverlay').textContent = 'CORRECT';
+					await fetch('/api/admin/flash', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-room-code': roomCode, 'x-admin-id': localStorage.getItem('adminId') }, body: JSON.stringify({ type: 'green' }) });
+				} 
+				else if (key === 'w') {
+					$('buzzerFlashOverlay').className = 'flash-overlay flash-red';
+					$('resultOverlay').className = 'result-overlay wrong';
+					$('resultOverlay').textContent = 'WRONG';
+					await fetch('/api/admin/flash', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-room-code': roomCode, 'x-admin-id': localStorage.getItem('adminId') }, body: JSON.stringify({ type: 'red' }) });
+				} 
+				else if (key === 'c') {
+					$('buzzerFlashOverlay').className = 'flash-overlay';
+					$('resultOverlay').className = 'result-overlay';
+					$('buzzerTeamOverlay').classList.remove('show');
+					await fetch('/api/admin/state', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-room-code': roomCode, 'x-admin-id': localStorage.getItem('adminId') }, body: JSON.stringify({ buzzedTeamId: null, buzzedAt: null, buzzerLocked: false }) });
+				}
+			}
+		}
+
+		document.addEventListener('keydown', handleBuzzerKeys);
+
 		document.addEventListener('keydown', event => { 
 			if ($('presenterView').hidden) return; 
 			if (event.key === 'ArrowRight' || event.key === 'PageDown' || event.key.toLowerCase() === 'n') { event.preventDefault(); nextSlide(); } 
@@ -837,13 +938,16 @@
 			else if (event.key.toLowerCase() === 'r' || event.key.toLowerCase() === 'a') { event.preventDefault(); revealAnswer(); } 
 			else if (event.key === 'Escape') { show('adminView'); } 
 		});
-
-
-		initData();
 		
 		if (localStorage.getItem('admin') === 'true') {
 			// Auto login if admin
-            show('adminView');
+            const isPresentMode = new URLSearchParams(window.location.search).get('present') === 'true';
+            if (isPresentMode) {
+                show('presenterView');
+                renderPresenter();
+            } else {
+                show('adminView');
+            }
 		}
 	</script>
 

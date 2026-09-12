@@ -13,7 +13,15 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+    setHeaders: (res, path) => {
+        if (path.endsWith('.html')) {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+        }
+    }
+}));
 
 // Admin credentials (should also be env vars in production)
 async function requireRoom(req, res, next) {
@@ -39,6 +47,18 @@ async function requireAdmin(req, res, next) {
   }
   
   req.roomId = room.id;
+  next();
+}
+
+// Middleware to authenticate any valid admin (globally)
+async function requireGlobalAdmin(req, res, next) {
+  const adminId = req.headers['x-admin-id'] || req.body.adminId;
+  if (!adminId) return res.status(401).json({ ok: false, message: 'Missing admin credentials' });
+  
+  const { data: admin, error } = await supabase.from('admins').select('id').eq('id', adminId).single();
+  if (error || !admin) return res.status(401).json({ ok: false, message: 'Unauthorized: Invalid admin credentials.' });
+  
+  req.adminId = admin.id;
   next();
 }
 
@@ -258,6 +278,27 @@ app.post('/api/admin/score', requireAdmin, async (req, res) => {
 app.delete('/api/teams/:id', async (req, res) => {
   const { error } = await supabase.from('teams').delete().eq('id', req.params.id);
   if (error) return res.status(500).json({ ok: false, message: error.message });
+  res.json({ ok: true });
+});
+
+app.post('/api/admin/get-upload-url', requireGlobalAdmin, async (req, res) => {
+  const { path } = req.body;
+  if (!path) return res.status(400).json({ ok: false, message: 'Path required' });
+  
+  // Use service role key to generate a signed upload URL
+  const { data, error } = await supabase.storage.from('linkup_images').createSignedUploadUrl(path);
+  if (error) return res.status(500).json({ ok: false, message: error.message });
+  
+  res.json({ ok: true, path: data.path, token: data.token });
+});
+
+app.post('/api/admin/delete-images', requireGlobalAdmin, async (req, res) => {
+  const { paths } = req.body;
+  if (!paths || !paths.length) return res.status(400).json({ ok: false, message: 'Paths required' });
+  
+  const { data, error } = await supabase.storage.from('linkup_images').remove(paths);
+  if (error) return res.status(500).json({ ok: false, message: error.message });
+  
   res.json({ ok: true });
 });
 
