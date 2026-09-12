@@ -16,17 +16,26 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Admin credentials (should also be env vars in production)
+async function requireRoom(req, res, next) {
+  const roomCode = req.headers['x-room-code'] || req.body.roomCode || req.query.room;
+  if (!roomCode) return res.status(401).json({ ok: false, message: 'Missing room credentials' });
+  const { data: room, error } = await supabase.from('rooms').select('id').eq('room_code', roomCode).single();
+  if (error || !room) return res.status(404).json({ ok: false, message: 'Room not found' });
+  req.roomId = room.id;
+  next();
+}
+
 // Middleware to authenticate room admin
 async function requireAdmin(req, res, next) {
   const roomCode = req.headers['x-room-code'] || req.body.roomCode || req.query.room;
-  const password = req.headers['x-room-password'] || req.body.password;
+  const adminId = req.headers['x-admin-id'] || req.body.adminId;
   
-  if (!roomCode || !password) return res.status(401).json({ ok: false, message: 'Missing room credentials' });
+  if (!roomCode || !adminId) return res.status(401).json({ ok: false, message: 'Missing room or admin credentials' });
   
-  const { data: room, error } = await supabase.from('rooms').select('id, admin_password').eq('room_code', roomCode).single();
+  const { data: room, error } = await supabase.from('rooms').select('id, admin_id').eq('room_code', roomCode).single();
   
-  if (error || !room || room.admin_password !== password) {
-    return res.status(401).json({ ok: false, message: 'Invalid room credentials' });
+  if (error || !room || room.admin_id !== adminId) {
+    return res.status(401).json({ ok: false, message: 'Unauthorized: You are not the admin of this room.' });
   }
   
   req.roomId = room.id;
@@ -34,40 +43,83 @@ async function requireAdmin(req, res, next) {
 }
 
 app.post('/api/admin/login', async (req, res) => {
-  const { username, password, roomCode } = req.body || {};
-  const { data: room, error } = await supabase.from('rooms').select('id, admin_password, admin_username').eq('room_code', roomCode).single();
+  const { username, password } = req.body || {};
+  if (!username || !password) return res.status(400).json({ ok: false, message: 'Missing credentials' });
+
+  // Call the secure RPC function to verify admin
+  const { data: adminId, error } = await supabase.rpc('verify_admin', { p_username: username, p_password: password });
   
-  if (room && room.admin_username === username && room.admin_password === password) {
-    return res.json({ ok: true, roomId: room.id });
+  if (error || !adminId) {
+    return res.status(401).json({ ok: false, message: 'Invalid admin credentials' });
   }
-  return res.status(401).json({ ok: false, message: 'Invalid admin credentials' });
+  
+  return res.json({ ok: true, adminId, username });
+});
+
+app.post('/api/rooms/create', async (req, res) => {
+  const { adminId } = req.body;
+  if (!adminId) return res.status(400).json({ ok: false, message: 'Admin ID required' });
+
+  let roomCode = '';
+  let roomCreated = false;
+  let roomId = null;
+
+  // Try generating a unique 6-character code
+  for (let i = 0; i < 5; i++) {
+    roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const { data: existing } = await supabase.from('rooms').select('id').eq('room_code', roomCode).single();
+    if (!existing) {
+      const { data: newRoom, error } = await supabase.from('rooms').insert([{ 
+        admin_id: adminId, 
+        room_code: roomCode, 
+        status: 'ACTIVE' 
+      }]).select('id').single();
+      
+      if (!error && newRoom) {
+        roomId = newRoom.id;
+        roomCreated = true;
+        break;
+      }
+    }
+  }
+
+  if (!roomCreated) return res.status(500).json({ ok: false, message: 'Failed to generate unique room code' });
+
+  // Initialize game state
+  await supabase.from('game_state').insert([{ room_id: roomId, buzzer_locked: true }]);
+
+  res.json({ ok: true, roomCode });
 });
 
 app.post('/api/teams/join', async (req, res) => {
-  const { memberName, teamName } = req.body;
-  
-  if (!memberName || !teamName) return res.status(400).json({ ok: false, message: 'Name and Team required' });
+  const { memberName, teamName, roomCode } = req.body;
+  if (!memberName || !teamName || !roomCode) return res.status(400).json({ ok: false, message: 'Name, Team, and Room Code required' });
 
-  // 1. Find or create the team
+  // Find room and check status
+  const { data: room } = await supabase.from('rooms').select('id, status').eq('room_code', roomCode).single();
+  if (!room) return res.status(404).json({ ok: false, message: 'Room not found' });
+  if (room.status !== 'ACTIVE' && room.status !== 'WAITING') return res.status(403).json({ ok: false, message: 'This room is closed or ended' });
+
+  const roomId = room.id;
+
   let team;
-  const { data: existingTeam, error: teamErr } = await supabase.from('teams').select('*').eq('team_name', teamName).single();
-  
-  if (existingTeam) {
-    team = existingTeam;
-  } else {
-    const { data: newTeam, error: newTeamErr } = await supabase.from('teams').insert([{ team_name: teamName }]).select().single();
-    if (newTeamErr) return res.status(500).json({ ok: false, message: newTeamErr.message });
+  const { data: existingTeam } = await supabase.from('teams').select('*').eq('team_name', teamName).eq('room_id', roomId).single();
+  if (existingTeam) team = existingTeam;
+  else {
+    const { data: newTeam, error: teamErr } = await supabase.from('teams').insert([{ room_id: roomId, team_name: teamName, score: 0 }]).select().single();
+    if (teamErr) return res.status(500).json({ ok: false, message: teamErr.message });
     team = newTeam;
   }
 
-  // 2. Insert member into team_members
-  const { error: memberErr } = await supabase.from('team_members').insert([{ team_id: team.id, member_name: memberName }]);
+  const { data: member, error: memberErr } = await supabase.from('team_members').insert([{ team_id: team.id, member_name: memberName }]).select().single();
   if (memberErr) return res.status(500).json({ ok: false, message: memberErr.message });
 
-  res.json({ ok: true, team: { id: team.id, teamName: team.team_name, score: team.score, assignedRound: team.assigned_round, assignedBatch: team.assigned_batch } });
+  res.json({ ok: true, teamId: team.id, memberId: member.id, roomId });
 });
 
-app.post('/api/buzz', async (req, res) => {
+
+
+app.post('/api/buzz', requireRoom, async (req, res) => {
   const { teamId } = req.body;
   
   // ATOMIC UPDATE: Only update if buzzer_locked is false
@@ -257,19 +309,35 @@ app.get('/api/initial-state', async (req, res) => {
   req.roomId = room.id;
 
   // Fetch initial data for clients who just connected
-  const [teamsRes, membersRes, stateRes, linkupRes] = await Promise.all([
-    supabase.from('teams').select('*').eq('room_id', req.roomId).order('joined_at', { ascending: true }),
-    supabase.from('team_members').select('*').eq('room_id', req.roomId),
+  const [
+    { data: teams },
+    { data: state },
+    { data: linkupRounds }
+  ] = await Promise.all([
+    supabase.from('teams').select('*, team_members(member_name)').eq('room_id', req.roomId).order('joined_at', { ascending: true }),
     supabase.from('game_state').select('*').eq('room_id', req.roomId).single(),
     supabase.from('linkup_rounds').select('*').order('order_index', { ascending: true })
   ]);
 
+  // Map the member name from the joined table
+  const mappedTeams = (teams || []).map(t => {
+    return {
+      ...t,
+      member_name: t.team_members && t.team_members.length > 0 ? t.team_members[0].member_name : 'Unknown'
+    };
+  });
+
+  let gameState = state;
+  if (!gameState) {
+    const { data: newState } = await supabase.from('game_state').insert([{ room_id: req.roomId, buzzer_locked: true }]).select().single();
+    gameState = newState || { buzzer_locked: true };
+  }
+
   res.json({
     ok: true,
-    teams: teamsRes.data || [],
-    teamMembers: membersRes.data || [],
-    linkupRounds: linkupRes.data || [],
-    state: stateRes.data || {}
+    teams: mappedTeams,
+    linkupRounds: linkupRounds || [],
+    state: gameState
   });
 });
 

@@ -310,38 +310,43 @@
 	<!-- Main Script using Supabase -->
 	<script>
 		// Setup Supabase Client
-		const urlParams = new URLSearchParams(window.location.search);
-		const roomCode = urlParams.get('room');
-		if (!roomCode) { document.body.innerHTML = '<h1>Invalid Room</h1><p>Please provide a valid room code in the URL (e.g., ?room=room1)</p>'; throw new Error('No room code'); }
-		const roomPassword = localStorage.getItem('room_password') || prompt('Enter admin password for ' + roomCode + ':');
-		localStorage.setItem('room_password', roomPassword);
-		let currentRoomId = null;
+		const supabaseUrl = 'https://lbdpaedflraegmyeyiat.supabase.co';
+		const supabaseKey = 'sb_publishable_fc7Gs9mzlB7IrVS-PyijdQ_isJxONfg';
+		const supabaseClient = window.supabase ? window.supabase.createClient(supabaseUrl, supabaseKey) : null;
 
-		const SUPABASE_URL = localStorage.getItem('supabaseUrl') || 'https://lbdpaedflraegmyeyiat.supabase.co';
-		const SUPABASE_KEY = localStorage.getItem('supabaseKey') || 'sb_publishable_fc7Gs9mzlB7IrVS-PyijdQ_isJxONfg';
-		
-		const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-		const placeholderOne = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500"%3E%3Crect width="800" height="500" fill="%23087f79"/%3E%3Ctext x="400" y="260" text-anchor="middle" fill="white" font-size="34" font-family="Georgia"%3EClue image 1%3C/text%3E%3C/svg%3E';
-		const placeholderTwo = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500"%3E%3Crect width="800" height="500" fill="%23ef6e5b"/%3E%3Ctext x="400" y="260" text-anchor="middle" fill="white" font-size="34" font-family="Georgia"%3EClue image 2%3C/text%3E%3C/svg%3E';
-		const placeholderThree = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500"%3E%3Crect width="800" height="500" fill="%23f7ca62"/%3E%3Ctext x="400" y="260" text-anchor="middle" fill="%2317212b" font-size="34" font-family="Georgia"%3EClue image 3%3C/text%3E%3C/svg%3E';
-		const placeholderFour = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500"%3E%3Crect width="800" height="500" fill="%23132f32"/%3E%3Ctext x="400" y="260" text-anchor="middle" fill="white" font-size="34" font-family="Georgia"%3EClue image 4%3C/text%3E%3C/svg%3E';
-		const slideLabels = { connection: 'Connection question', greeting: 'Greeting', break: 'Break', windup: 'Wind-up / closing', custom: 'Custom announcement' };
-		
 		let rounds = [];
+		let currentRoomId = null;
 		let activeRoundId = null;
-		let editingId = null;
 		let revealed = false;
 		let clueRevealIndex = 0;
-		let imageData = [null, null, null, null];
-		let answerImageData = null;
+		let $ = window.jQuery;
 
-		const $ = id => document.getElementById(id);
-		
-		// Initialize Data from Backend
-		async function initData() {
-			const { data: roomData } = await supabaseClient.from('rooms').select('id').eq('room_code', roomCode).single();
-			if (!roomData) { document.body.innerHTML = '<h1>Invalid Room</h1>'; return; }
+		const urlParams = new URLSearchParams(window.location.search);
+		const roomCode = urlParams.get('room');
+		if (!roomCode) {
+			document.body.innerHTML = `
+				<div style="display: grid; place-items: center; min-height: 100vh; background: var(--bg); font-family: 'Fraunces', serif;">
+					<div style="background: white; padding: 40px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 90%; max-width: 400px; text-align: center;">
+						<h1 style="margin: 0 0 10px 0; color: var(--primary);">LinkUp Game</h1>
+						<p style="color: #666; margin-bottom: 20px; font-family: -apple-system, system-ui, sans-serif;">Enter a Room Code to join or host.</p>
+						<form onsubmit="event.preventDefault(); window.location.search = '?room=' + document.getElementById('roomInput').value.trim().toUpperCase();">
+							<input id="roomInput" type="text" placeholder="Enter Room Code" required style="width: 100%; padding: 12px; margin-bottom: 16px; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; box-sizing: border-box; text-transform: uppercase;" />
+							<button type="submit" style="width: 100%; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 6px; font-size: 16px; cursor: pointer;">Enter Room</button>
+						</form>
+					</div>
+				</div>
+			`;
+		} else {
+			initLinkup();
+		}
+
+		async function initLinkup() {
+			const { data: roomData, error: roomError } = await supabaseClient.from('rooms').select('id').eq('room_code', roomCode).single();
+			if (roomError || !roomData) {
+				alert("Room not found");
+				window.location.search = '';
+				return;
+			}
 			currentRoomId = roomData.id;
 
 			try {
@@ -367,20 +372,19 @@
 
 			// Supabase Realtime Listener
 			supabaseClient.channel('public:*')
-				.on('postgres_changes', { event: '*', schema: 'public', table: 'game_state' }, payload => {
-					if (payload.new.id === 1) {
-						activeRoundId = payload.new.active_linkup_round_id;
-						revealed = payload.new.linkup_revealed;
-						clueRevealIndex = payload.new.linkup_clue_index;
-						renderPresenter();
-						renderAdmin();
-					}
+				.on('postgres_changes', { event: '*', schema: 'public', table: 'game_state', filter: `room_id=eq.${currentRoomId}` }, payload => {
+					activeRoundId = payload.new.active_linkup_round_id;
+					revealed = payload.new.linkup_revealed;
+					clueRevealIndex = payload.new.linkup_clue_index;
+					renderPresenter();
+					renderAdmin();
 				})
 				.on('postgres_changes', { event: '*', schema: 'public', table: 'linkup_rounds' }, payload => {
-					if (payload.eventType === 'INSERT') rounds.push(payload.new);
-					else if (payload.eventType === 'UPDATE') {
-						const i = rounds.findIndex(r => r.id === payload.new.id);
-						if (i > -1) rounds[i] = payload.new;
+					if (payload.eventType === 'INSERT') {
+						rounds.push(payload.new);
+					} else if (payload.eventType === 'UPDATE') {
+						const idx = rounds.findIndex(r => r.id === payload.new.id);
+						if (idx !== -1) rounds[idx] = payload.new;
 					} else if (payload.eventType === 'DELETE') {
 						rounds = rounds.filter(r => r.id !== payload.old.id);
 					}
@@ -581,7 +585,7 @@
 		async function uploadToSupabase(file, roundId) {
 			const filename = `${Date.now()}_${Math.random().toString(36).substring(7)}.webp`;
 			const path = `slides/${roundId || 'temp'}/${filename}`;
-			const res = await fetch('/api/admin/get-upload-url', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-room-code': roomCode, 'x-room-password': roomPassword }, body: JSON.stringify({ path }) });
+			const res = await fetch('/api/admin/get-upload-url', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-room-code': roomCode, 'x-admin-id': localStorage.getItem('adminId') }, body: JSON.stringify({ path }) });
 			const data = await res.json();
 			if (!data.ok) throw new Error('Could not get upload URL');
 			const { error } = await supabaseClient.storage.from('linkup_images').uploadToSignedUrl(data.path, data.token, file);
@@ -592,7 +596,7 @@
 		async function deleteImages(paths) {
 			const validPaths = paths.filter(p => typeof p === 'string' && p.startsWith('slides/'));
 			if (!validPaths.length) return;
-			await fetch('/api/admin/delete-images', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-room-code': roomCode, 'x-room-password': roomPassword }, body: JSON.stringify({ paths: validPaths }) });
+			await fetch('/api/admin/delete-images', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-room-code': roomCode, 'x-admin-id': localStorage.getItem('adminId') }, body: JSON.stringify({ paths: validPaths }) });
 		}
 
 		function getImageUrl(pathOrBase64) {

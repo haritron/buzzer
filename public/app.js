@@ -1,6 +1,25 @@
 const app = document.getElementById('app');
 
 console.log("--- App.js Loaded v2 ---");
+// Migrate old localStorage format if it exists
+let storedMyTeam = localStorage.getItem('myTeam');
+if (storedMyTeam) {
+  try {
+    let parsed = JSON.parse(storedMyTeam);
+    // Migration for old schema where it was stored as teamId instead of id
+    if (parsed.teamId && !parsed.id) {
+      parsed.id = parsed.teamId;
+      localStorage.setItem('myTeam', JSON.stringify(parsed));
+    }
+    // Robust validation: If id is missing, or literally the string "undefined", clear it.
+    if (!parsed.id || parsed.id === 'undefined') {
+      localStorage.removeItem('myTeam');
+    }
+  } catch(e) {
+    localStorage.removeItem('myTeam');
+  }
+}
+
 let globalState = {
   isLoaded: false,
   teams: [],
@@ -16,20 +35,158 @@ let globalState = {
   adminLoggedIn: localStorage.getItem('adminLoggedIn') === 'true'
 };
 
+
 const urlParams = new URLSearchParams(window.location.search);
 const roomCode = urlParams.get('room');
-if (!roomCode) { document.body.innerHTML = '<h1>Invalid Room</h1><p>Please provide a valid room code in the URL (e.g., ?room=room1)</p>'; throw new Error('No room code'); }
-const roomPassword = localStorage.getItem('room_password') || '';
-let currentRoomId = null;
+const isAdmin = window.location.pathname.endsWith('/admin');
+const isDisplay = window.location.pathname.endsWith('/display');
+
+// If there's no room code, we show the landing page and DO NOT initialize realtime or the app loop.
+if (!roomCode) {
+  if (isAdmin) {
+    // Show Admin Login for the global admin dashboard
+    renderGlobalAdminLogin();
+  } else {
+    // Show Candidate Join
+    renderCandidateJoin();
+  }
+} else {
+  // If there IS a room code, initialize normally
+  initApp();
+}
+
+function renderGlobalAdminLogin() {
+  document.body.innerHTML = `
+    <div style="display: grid; place-items: center; min-height: 100vh; background: #0f172a; color: white; font-family: sans-serif;">
+      <div style="background: #1e293b; padding: 40px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 90%; max-width: 400px; text-align: center;">
+        <h2 style="margin-top: 0; color: #38bdf8;">Admin Portal</h2>
+        <p style="color: #94a3b8; margin-bottom: 20px;">Login to manage your rooms.</p>
+        <form onsubmit="event.preventDefault(); handleGlobalAdminLogin();">
+          <input id="adminUser" type="text" placeholder="Username" style="width: 100%; margin-bottom: 15px; padding: 12px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: white;" required />
+          <input id="adminPass" type="password" placeholder="Password" style="width: 100%; margin-bottom: 15px; padding: 12px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: white;" required />
+          <button style="width: 100%; padding: 12px; background: #38bdf8; color: #0f172a; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;" type="submit">Login</button>
+        </form>
+      </div>
+    </div>
+  `;
+  
+  // If they are already logged in locally, go straight to dashboard
+  if (localStorage.getItem('adminLoggedIn') === 'true') {
+    renderGlobalAdminDashboard();
+  }
+}
+
+async function handleGlobalAdminLogin() {
+  const user = document.getElementById('adminUser').value;
+  const pass = document.getElementById('adminPass').value;
+  try {
+    const res = await fetch('/api/admin/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: user, password: pass })
+    }).then(r => r.json());
+    if (res.ok) {
+      localStorage.setItem('adminLoggedIn', 'true');
+      localStorage.setItem('adminId', res.adminId);
+      localStorage.setItem('adminUser', res.username);
+      renderGlobalAdminDashboard();
+    } else {
+      alert("Login failed: " + res.message);
+    }
+  } catch(e) {
+    alert("Error logging in");
+  }
+}
+
+function renderGlobalAdminDashboard() {
+  document.body.innerHTML = `
+    <div style="padding: 2rem; max-width: 800px; margin: 0 auto; color: white; font-family: sans-serif;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+        <h2 style="margin: 0;">Global Admin Dashboard</h2>
+        <button style="padding: 8px 16px; background: #334155; color: white; border: none; border-radius: 4px; cursor: pointer;" onclick="logoutGlobalAdmin()">Logout</button>
+      </div>
+      <div style="background: #1e293b; text-align: center; padding: 40px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+        <h3 style="color: #38bdf8;">Start a new LinkUp Game</h3>
+        <p style="color: #94a3b8; margin-bottom: 20px;">Generate a new room code and start hosting.</p>
+        <button style="font-size: 1.2rem; padding: 15px 30px; background: #38bdf8; color: #0f172a; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;" onclick="createNewRoom()">Start New Game</button>
+      </div>
+    </div>
+  `;
+}
+
+function logoutGlobalAdmin() {
+  localStorage.removeItem('adminLoggedIn');
+  localStorage.removeItem('adminId');
+  localStorage.removeItem('adminUser');
+  window.location.reload();
+}
+
+async function createNewRoom() {
+  try {
+    const adminId = localStorage.getItem('adminId');
+    if (!adminId || adminId === 'undefined') {
+      alert("Your session has expired (missing Admin ID). Please log in again.");
+      logoutGlobalAdmin();
+      return;
+    }
+    const res = await fetch('/api/rooms/create', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ adminId })
+    }).then(r => r.json());
+    if (res.ok) {
+      window.location.search = '?room=' + res.roomCode;
+    } else {
+      alert(res.message);
+    }
+  } catch(e) {
+    alert("Failed to create room.");
+  }
+}
+
+function renderCandidateJoin() {
+  document.body.innerHTML = `
+    <div style="display: grid; place-items: center; min-height: 100vh; background: #0f172a; color: white; font-family: sans-serif;">
+      <div style="background: #1e293b; padding: 40px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 90%; max-width: 400px; text-align: center;">
+        <h2 style="margin-top: 0; color: #38bdf8;">Welcome to Live Quiz</h2>
+        <p style="color: #94a3b8; margin-bottom: 20px;">Join a Game</p>
+        <form onsubmit="event.preventDefault(); handleCandidateJoin();">
+          <input id="joinMember" type="text" placeholder="Your Name" style="width: 100%; margin-bottom: 15px; padding: 12px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: white;" required />
+          <input id="joinTeam" type="text" placeholder="Team Name" style="width: 100%; margin-bottom: 15px; padding: 12px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: white;" required />
+          <input id="joinRoom" type="text" placeholder="Room Code (e.g. XYZW)" style="width: 100%; margin-bottom: 15px; padding: 12px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: white;" required />
+          <button style="width: 100%; padding: 12px; background: #38bdf8; color: #0f172a; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;" type="submit">Join Game</button>
+        </form>
+      </div>
+    </div>
+  `;
+}
+
+async function handleCandidateJoin() {
+  const memberName = document.getElementById('joinMember').value.trim();
+  const teamName = document.getElementById('joinTeam').value.trim();
+  const rc = document.getElementById('joinRoom').value.trim().toUpperCase();
+  
+  try {
+    const res = await fetch('/api/teams/join', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ memberName, teamName, roomCode: rc })
+    }).then(r => r.json());
+    
+    if (res.ok) {
+      localStorage.setItem('myTeam', JSON.stringify({ id: res.teamId, teamName, memberId: res.memberId, memberName }));
+      window.location.search = '?room=' + rc;
+    } else {
+      alert("Failed to join: " + res.message);
+    }
+  } catch(e) {
+    alert("Error connecting to server.");
+  }
+}
+
 
 const supabaseUrl = 'https://lbdpaedflraegmyeyiat.supabase.co';
 const supabaseKey = 'sb_publishable_fc7Gs9mzlB7IrVS-PyijdQ_isJxONfg';
-
 let supabaseClient = null;
 if (window.supabase) {
   supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
-} else {
-  console.warn("Supabase CDN failed to load or index.html is cached. Realtime disabled.");
 }
 
 async function initApp() {
@@ -49,7 +206,15 @@ async function initApp() {
     };
     globalState.isLoaded = true;
     render();
-  } catch(e) { console.error('Failed to fetch initial state', e); }
+  } catch(e) { 
+    console.error('Failed to fetch initial state', e);
+    // If the room wasn't found, drop them back to the landing page
+    if (e.message && e.message.toLowerCase().includes('not found')) {
+      alert("Room not found or no longer active.");
+      window.location.search = ''; // Strip ?room= code and reload
+      return;
+    }
+  }
 
   // Setup Supabase Realtime
   if (supabaseClient) {
@@ -72,9 +237,15 @@ async function initApp() {
         }
         render();
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'teams' }, payload => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'teams' }, async payload => {
         if (payload.eventType === 'INSERT') {
-          globalState.teams.push({ id: payload.new.id, memberName: payload.new.member_name, teamName: payload.new.team_name, score: payload.new.score, assignedRound: payload.new.assigned_round, assignedBatch: payload.new.assigned_batch });
+          // Because member_name isn't in teams table, fetch it quickly
+          let mName = 'Unknown';
+          if (supabaseClient) {
+             const { data: memberData } = await supabaseClient.from('team_members').select('member_name').eq('team_id', payload.new.id).single();
+             if (memberData) mName = memberData.member_name;
+          }
+          globalState.teams.push({ id: payload.new.id, memberName: mName, teamName: payload.new.team_name, score: payload.new.score, assignedRound: payload.new.assigned_round, assignedBatch: payload.new.assigned_batch });
         } else if (payload.eventType === 'UPDATE') {
           const idx = globalState.teams.findIndex(t => t.id === payload.new.id);
           if (idx !== -1) {
@@ -99,10 +270,17 @@ async function initApp() {
   }
 }
 
-initApp();
+// removed initApp();
 
 async function apiCall(url, method = 'POST', body = null) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  
+  const adminId = localStorage.getItem('adminId');
+  if (adminId) opts.headers['x-admin-id'] = adminId;
+  
+  const rc = new URLSearchParams(window.location.search).get('room');
+  if (rc) opts.headers['x-room-code'] = rc;
+  
   if (body) opts.body = JSON.stringify(body);
   const res = await fetch(url, opts);
   const json = await res.json();
@@ -129,8 +307,11 @@ function render() {
   } else if (path === '/display') {
     renderDisplay();
   } else {
-    if (!globalState.myTeam) renderPlayerJoin();
-    else renderPlayerDashboard();
+    if (!globalState.myTeam) {
+      window.location.search = '';
+    } else {
+      renderPlayerDashboard();
+    }
   }
 }
 
@@ -212,7 +393,8 @@ function renderPlayerDashboard() {
   if (!myTeamData) { // Server restarted / team deleted
     globalState.myTeam = null;
     localStorage.removeItem('myTeam');
-    return renderPlayerJoin();
+    window.location.search = ''; // Drop back to landing page
+    return;
   }
 
   const isMyTurn = myTeamData.assignedRound === globalState.state.activeRound && myTeamData.assignedBatch === globalState.state.activeBatch;
@@ -267,7 +449,7 @@ function renderAdminLogin() {
 async function adminLogin() {
   try {
     await apiCall('/api/admin/login', 'POST', {
-      username: document.getElementById('adminUser').value,
+      username: document.getElementById('adminUser').value.replace(/\s+/g, ''),
       password: document.getElementById('adminPass').value
     });
     globalState.adminLoggedIn = true;
@@ -285,7 +467,12 @@ function renderAdminDashboard() {
   app.innerHTML = `
     <div class="admin-container">
       <div class="admin-header">
-        <h2>Admin Dashboard</h2>
+        <h2 style="display: flex; align-items: center; gap: 15px;">
+          Admin Dashboard 
+          <span style="font-size: 0.7em; padding: 4px 10px; background: rgba(56, 189, 248, 0.2); color: #38bdf8; border-radius: 6px; letter-spacing: 1px;">
+            ROOM: ${roomCode}
+          </span>
+        </h2>
         <div>
           <a href="/linkup.html?room=${roomCode}" class="btn btn-primary" style="text-decoration:none; margin-right:8px;">Open LinkUp Game</a>
           <button class="btn btn-secondary" onclick="navigate('/display')" target="_blank">Open Display</button>
@@ -432,5 +619,4 @@ function triggerFlash(type) {
   }
 }
 
-// Initial render
-render();
+// removed render();
