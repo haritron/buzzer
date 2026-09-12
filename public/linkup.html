@@ -214,6 +214,25 @@
 		}
 	
 		
+		
+		/* Leaderboard Overlay */
+		.leaderboard-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(10px); z-index: 3000; display: flex; flex-direction: column; align-items: center; padding: 40px; transform: translateY(-100%); transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1); color: #fff; overflow-y: auto; }
+		.leaderboard-overlay.show { transform: translateY(0); }
+		.leaderboard-title { font-size: 48px; font-weight: 900; color: #f7ca62; margin-bottom: 40px; text-transform: uppercase; letter-spacing: 4px; text-shadow: 0 4px 15px rgba(247, 202, 98, 0.4); }
+		.leaderboard-list { width: 100%; max-width: 800px; display: flex; flex-direction: column; gap: 12px; }
+		.lb-row { display: flex; align-items: center; background: rgba(255,255,255,0.05); padding: 20px 30px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1); transition: transform 0.2s; }
+		.lb-row:hover { transform: scale(1.02); background: rgba(255,255,255,0.1); }
+		.lb-rank { font-size: 32px; font-weight: 900; width: 60px; color: rgba(255,255,255,0.5); }
+		.lb-name { flex: 1; font-size: 28px; font-weight: bold; }
+		.lb-score { font-size: 36px; font-weight: 900; color: #4ade80; }
+		
+		.lb-row.rank-1 { background: linear-gradient(90deg, rgba(251,191,36,0.2) 0%, rgba(255,255,255,0.05) 100%); border-color: rgba(251,191,36,0.4); box-shadow: 0 0 20px rgba(251,191,36,0.1); }
+		.lb-row.rank-1 .lb-rank { color: #fbbf24; font-size: 42px; }
+		.lb-row.rank-2 { background: linear-gradient(90deg, rgba(148,163,184,0.2) 0%, rgba(255,255,255,0.05) 100%); border-color: rgba(148,163,184,0.4); }
+		.lb-row.rank-2 .lb-rank { color: #94a3b8; font-size: 38px; }
+		.lb-row.rank-3 { background: linear-gradient(90deg, rgba(180,83,9,0.2) 0%, rgba(255,255,255,0.05) 100%); border-color: rgba(180,83,9,0.4); }
+		.lb-row.rank-3 .lb-rank { color: #b45309; font-size: 36px; }
+
 		/* Buzzer Overlay Styles */
 		.flash-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; z-index: 2000; transition: opacity 0.5s ease; }
 		.flash-green { background: rgba(0, 255, 0, 0.4); opacity: 1; }
@@ -319,6 +338,13 @@
 				
 				<div class="shortcut-hint">← / → previous or next slide · Space reveal clue · R reveal answer · Esc host controls</div>
 				
+				
+				<!-- Leaderboard Overlay -->
+				<div id="leaderboardOverlay" class="leaderboard-overlay">
+					<div class="leaderboard-title">RANKINGS</div>
+					<div id="leaderboardList" class="leaderboard-list"></div>
+				</div>
+
 				<!-- Buzzer Elements -->
 				<div id="buzzerFlashOverlay" class="flash-overlay"></div>
 				<div id="buzzerTeamOverlay" class="buzzer-overlay">
@@ -395,6 +421,9 @@
 							if (payload.eventType === 'INSERT') teamsList.push(payload.new);
 							if (payload.eventType === 'UPDATE') teamsList = teamsList.map(t => t.id === payload.new.id ? payload.new : t);
 							if (payload.eventType === 'DELETE') teamsList = teamsList.filter(t => t.id !== payload.old.id);
+							if ($('leaderboardOverlay') && $('leaderboardOverlay').classList.contains('show')) {
+								updateLeaderboard();
+							}
 						}).subscribe();
 
 					const state = stateRes.data || {};
@@ -413,6 +442,12 @@
 
 
 					renderAdmin();
+					
+					if (state.show_leaderboard) {
+						updateLeaderboard();
+						$('leaderboardOverlay').classList.add('show');
+					}
+
 					renderPresenter();
 				}
 			} catch(e) {
@@ -447,10 +482,26 @@
 							$('resultOverlay').className = 'result-overlay';
 						}
 
+						
+						if (st.show_leaderboard !== undefined) {
+							if (st.show_leaderboard) {
+								updateLeaderboard();
+								$('leaderboardOverlay').classList.add('show');
+							} else {
+								$('leaderboardOverlay').classList.remove('show');
+							}
+						}
+
 						if (st.active_linkup_round_id !== undefined) activeRoundId = st.active_linkup_round_id;
 						if (st.linkup_revealed !== undefined) revealed = st.linkup_revealed;
 						if (st.linkup_clue_index !== undefined) clueRevealIndex = st.linkup_clue_index;
-						renderPresenter();
+						
+					if (state.show_leaderboard) {
+						updateLeaderboard();
+						$('leaderboardOverlay').classList.add('show');
+					}
+
+					renderPresenter();
 						renderAdmin();
 					})
 					.subscribe();
@@ -468,6 +519,12 @@
 					}
 					rounds.sort((a,b) => a.order_index - b.order_index);
 					renderAdmin();
+					
+					if (state.show_leaderboard) {
+						updateLeaderboard();
+						$('leaderboardOverlay').classList.add('show');
+					}
+
 					renderPresenter();
 				})
 				.subscribe();
@@ -491,7 +548,13 @@
 			document.querySelectorAll('.view, .presenter').forEach(el => el.hidden = el.id !== id); 
 			document.body.classList.toggle('presenting', id === 'presenterView'); 
 			if (id === 'adminView') renderAdmin(); 
-			if (id === 'presenterView') renderPresenter(); 
+			if (id === 'presenterView') 
+					if (state.show_leaderboard) {
+						updateLeaderboard();
+						$('leaderboardOverlay').classList.add('show');
+					}
+
+					renderPresenter(); 
 		}
 		function toast(message) { 
 			const el = $('toast'); el.textContent = message; el.classList.add('show'); 
@@ -577,6 +640,19 @@
 		}
 
 		
+
+		
+		function updateLeaderboard() {
+			const sortedTeams = [...teamsList].sort((a, b) => b.score - a.score);
+			const listEl = $('leaderboardList');
+			listEl.innerHTML = sortedTeams.map((t, index) => `
+				<div class="lb-row rank-${index + 1}">
+					<div class="lb-rank">#${index + 1}</div>
+					<div class="lb-name">${escapeHtml(t.team_name)}</div>
+					<div class="lb-score">${t.score}</div>
+				</div>
+			`).join('');
+		}
 
 		function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char])); }
 		function syncImageBoxes() {
@@ -881,7 +957,13 @@
 			closePresenterModal();
 			show('presenterView');
 			renderAdmin();
-			renderPresenter();
+			
+					if (state.show_leaderboard) {
+						updateLeaderboard();
+						$('leaderboardOverlay').classList.add('show');
+					}
+
+					renderPresenter();
 		} catch(err) {
 			console.error(err);
 			alert("Failed to start presentation");
@@ -967,7 +1049,13 @@
             const isPresentMode = new URLSearchParams(window.location.search).get('present') === 'true';
             if (isPresentMode) {
                 show('presenterView');
-                renderPresenter();
+                
+					if (state.show_leaderboard) {
+						updateLeaderboard();
+						$('leaderboardOverlay').classList.add('show');
+					}
+
+					renderPresenter();
             } else {
                 show('adminView');
             }

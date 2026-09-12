@@ -474,6 +474,8 @@ function renderAdminDashboard() {
           </span>
         </h2>
         <div>
+          <button class="btn btn-primary" style="background:#f59e0b; border-color:#f59e0b; margin-right:8px;" onclick="downloadRankings()">Download CSV ⬇</button>
+          
           <button class="btn btn-primary" style="background:#087f79; border-color:#087f79; margin-right:8px;" onclick="openMainPresenterModal()">Open presenter screen ↗</button>
           <button class="btn btn-secondary" onclick="logout()">Logout</button>
         </div>
@@ -544,6 +546,27 @@ function renderAdminDashboard() {
         <hr style="margin:40px 0; border:0; border-top:1px solid rgba(255,255,255,0.1)">
         <button class="btn btn-danger mt-4" style="width:100%" onclick="resetGame()">Reset Game Data</button>
       </div>
+
+      <div class="panel">
+        <h3 class="mb-4">Live Leaderboard</h3>
+        <div class="team-list">
+          ${[...globalState.teams].sort((a,b) => b.score - a.score).map((t, index) => `
+            <div class="team-item" style="display:flex; justify-content:space-between; align-items:center; padding:12px; margin-bottom:8px; border-radius:8px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);">
+              <div style="display:flex; align-items:center; gap:12px;">
+                <div style="font-size:1.5rem; font-weight:900; color:${index === 0 ? '#fbbf24' : index === 1 ? '#94a3b8' : index === 2 ? '#b45309' : 'rgba(255,255,255,0.5)'}; width:30px;">#${index+1}</div>
+                <div>
+                  <strong style="font-size:1.2rem;">${t.teamName}</strong><br>
+                  <small style="color:var(--text-secondary);">${t.memberName}</small>
+                </div>
+              </div>
+              <div style="font-size:1.8rem; font-weight:bold; color:#4ade80;">
+                ${t.score}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
     </div>
   `;
 
@@ -556,6 +579,36 @@ async function changeScore(teamId, amount) {
 async function deleteTeam(teamId) {
   await apiCall(`/api/teams/${teamId}`, 'DELETE');
 }
+
+async function toggleLeaderboard() {
+  await apiCall('/api/admin/state', 'POST', { showLeaderboard: !globalState.state.showLeaderboard });
+}
+
+function downloadRankings() {
+  const teams = [...globalState.teams].sort((a, b) => b.score - a.score);
+  let csvContent = "data:text/csv;charset=utf-8,Rank,Team Name,Member Name,Score,Round,Batch\n";
+  
+  teams.forEach((t, index) => {
+    const row = [
+      index + 1,
+      `"${(t.teamName || '').replace(/"/g, '""')}"`,
+      `"${(t.memberName || '').replace(/"/g, '""')}"`,
+      t.score,
+      `"${(t.assignedRound || '').replace(/"/g, '""')}"`,
+      `"${(t.assignedBatch || '').replace(/"/g, '""')}"`
+    ].join(",");
+    csvContent += row + "\n";
+  });
+
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement("a");
+  link.setAttribute("href", encodedUri);
+  link.setAttribute("download", `rankings_room_${roomCode}_${new Date().toISOString().split('T')[0]}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 async function toggleBuzzer() {
   await apiCall('/api/admin/state', 'POST', { buzzerLocked: !globalState.state.buzzerLocked });
 }

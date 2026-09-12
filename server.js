@@ -190,6 +190,8 @@ app.post('/api/admin/state', requireAdmin, async (req, res) => {
   if (newState.activeLinkupRoundId !== undefined) updateData.active_linkup_round_id = newState.activeLinkupRoundId;
   if (newState.linkupRevealed !== undefined) updateData.linkup_revealed = newState.linkupRevealed;
   if (newState.linkupClueIndex !== undefined) updateData.linkup_clue_index = newState.linkupClueIndex;
+  
+  if (newState.showLeaderboard !== undefined) updateData.show_leaderboard = newState.showLeaderboard;
 
   const { error } = await supabase
     .from('game_state')
@@ -211,11 +213,11 @@ app.post('/api/admin/flash', requireAdmin, async (req, res) => {
     const config = state.tournament_config || {};
     const rounds = config.rounds || [];
     const activeRoundCfg = rounds.find(r => r.roundNumber === state.active_round) || {
-      pointsSetting: { positiveBase: 10, negativeBase: -10, timeBasedDecay: false, maxTimeBonus: 0 }
+      pointsSetting: { positiveBase: 2, negativeBase: 0, timeBasedDecay: false, maxTimeBonus: 0 }
     };
     
     let scoreChange = 0;
-    const rules = activeRoundCfg.pointsSetting || { positiveBase: 10, negativeBase: -10, timeBasedDecay: false, maxTimeBonus: 0 };
+    const rules = activeRoundCfg.pointsSetting || { positiveBase: 2, negativeBase: 0, timeBasedDecay: false, maxTimeBonus: 0 };
 
     if (type === 'green') {
       scoreChange = parseInt(rules.positiveBase) || 0;
