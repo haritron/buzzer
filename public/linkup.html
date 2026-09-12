@@ -443,10 +443,7 @@
 
 					renderAdmin();
 					
-					if (state.show_leaderboard) {
-						updateLeaderboard();
-						$('leaderboardOverlay').classList.add('show');
-					}
+
 
 					renderPresenter();
 				}
@@ -543,10 +540,7 @@
 			document.body.classList.toggle('presenting', id === 'presenterView'); 
 			if (id === 'adminView') renderAdmin(); 
 			if (id === 'presenterView') 
-					if (state.show_leaderboard) {
-						updateLeaderboard();
-						$('leaderboardOverlay').classList.add('show');
-					}
+
 
 					renderPresenter(); 
 		}
@@ -952,10 +946,7 @@
 			show('presenterView');
 			renderAdmin();
 			
-					if (state.show_leaderboard) {
-						updateLeaderboard();
-						$('leaderboardOverlay').classList.add('show');
-					}
+
 
 					renderPresenter();
 		} catch(err) {
@@ -1044,10 +1035,7 @@
             if (isPresentMode) {
                 show('presenterView');
                 
-					if (state.show_leaderboard) {
-						updateLeaderboard();
-						$('leaderboardOverlay').classList.add('show');
-					}
+
 
 					renderPresenter();
             } else {
