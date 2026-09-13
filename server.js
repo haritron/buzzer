@@ -123,7 +123,7 @@ app.post('/api/rooms/create', requireGlobalAdmin, async (req, res) => {
 });
 
 app.post('/api/teams/join', async (req, res) => {
-  const { memberName, teamName, roomCode } = req.body;
+  const { memberName, teamName, roomCode, additionalMembers } = req.body;
   if (!memberName || !teamName || !roomCode) return res.status(400).json({ ok: false, message: 'Name, Team, and Room Code required' });
 
   // Find room and check status
@@ -144,6 +144,14 @@ app.post('/api/teams/join', async (req, res) => {
 
   const { data: member, error: memberErr } = await supabase.from('team_members').insert([{ team_id: team.id, member_name: memberName }]).select().single();
   if (memberErr) return res.status(500).json({ ok: false, message: memberErr.message });
+
+  if (additionalMembers && Array.isArray(additionalMembers)) {
+    const validMembers = additionalMembers.filter(m => typeof m === 'string' && m.trim().length > 0);
+    if (validMembers.length > 0) {
+      const inserts = validMembers.map(m => ({ team_id: team.id, member_name: m.trim() }));
+      await supabase.from('team_members').insert(inserts);
+    }
+  }
 
   res.json({ ok: true, teamId: team.id, memberId: member.id, roomId });
 });

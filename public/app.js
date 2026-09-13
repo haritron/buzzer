@@ -160,6 +160,10 @@ function renderCandidateJoin() {
           <input id="joinMember" type="text" placeholder="Your Name" style="width: 100%; margin-bottom: 15px; padding: 12px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: white;" required />
           <input id="joinTeam" type="text" placeholder="Team Name" style="width: 100%; margin-bottom: 15px; padding: 12px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: white;" required />
           <input id="joinRoom" type="text" placeholder="Room Code (e.g. XYZW)" style="width: 100%; margin-bottom: 15px; padding: 12px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: white;" required />
+          <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 10px; text-align: left;">Optional Team Members:</p>
+          <input id="joinMember1" type="text" placeholder="Team Member 1 (Optional)" style="width: 100%; margin-bottom: 10px; padding: 12px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: white;" />
+          <input id="joinMember2" type="text" placeholder="Team Member 2 (Optional)" style="width: 100%; margin-bottom: 10px; padding: 12px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: white;" />
+          <input id="joinMember3" type="text" placeholder="Team Member 3 (Optional)" style="width: 100%; margin-bottom: 15px; padding: 12px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: white;" />
           <button style="width: 100%; padding: 12px; background: #38bdf8; color: #0f172a; border: none; border-radius: 6px; font-weight: bold; cursor: pointer;" type="submit">Join Game</button>
         </form>
       </div>
@@ -172,10 +176,16 @@ async function handleCandidateJoin() {
   const teamName = document.getElementById('joinTeam').value.trim();
   const rc = document.getElementById('joinRoom').value.trim().toUpperCase();
   
+  const additionalMembers = [
+    document.getElementById('joinMember1')?.value.trim(),
+    document.getElementById('joinMember2')?.value.trim(),
+    document.getElementById('joinMember3')?.value.trim()
+  ].filter(m => m);
+
   try {
     const res = await fetch('/api/teams/join', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ memberName, teamName, roomCode: rc })
+      body: JSON.stringify({ memberName, teamName, roomCode: rc, additionalMembers })
     }).then(r => r.json());
     
     if (res.ok) {
@@ -212,6 +222,7 @@ async function initApp() {
       activeBatch: res.state.active_batch || 1,
       tournamentConfig: res.state.tournament_config || { rounds: [] }
     };
+    globalState.roomId = res.state.room_id;
     globalState.isLoaded = true;
     render();
   } catch(e) { 
@@ -227,7 +238,7 @@ async function initApp() {
   // Setup Supabase Realtime
   if (supabaseClient) {
     supabaseClient.channel('public:db_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'game_state' }, payload => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'game_state', filter: `room_id=eq.${globalState.roomId}` }, payload => {
         const row = payload.new;
         if (!row) return;
         const oldFlash = globalState.state.flashEvent;
@@ -245,7 +256,7 @@ async function initApp() {
         }
         render();
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'teams' }, async payload => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'teams', filter: `room_id=eq.${globalState.roomId}` }, async payload => {
         if (payload.eventType === 'INSERT') {
           // Because member_name isn't in teams table, fetch it quickly
           let mName = 'Unknown';
@@ -333,7 +344,11 @@ function renderPlayerJoin() {
       <div id="joinError" style="color: #ef4444; margin-bottom: 15px; text-align: center; display: none;"></div>
       <input id="memberName" type="text" placeholder="Your Name" />
       <input id="teamName" type="text" placeholder="Team Name" />
-      <button class="btn" style="width:100%" onclick="joinTeam()">JOIN GAME</button>
+      <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 10px; margin-top: 10px; text-align: left;">Optional Team Members:</p>
+      <input id="joinMember1" type="text" placeholder="Team Member 1 (Optional)" />
+      <input id="joinMember2" type="text" placeholder="Team Member 2 (Optional)" />
+      <input id="joinMember3" type="text" placeholder="Team Member 3 (Optional)" />
+      <button class="btn" style="width:100%; margin-top: 10px;" onclick="joinTeam()">JOIN GAME</button>
       <div style="margin-top: 15px; text-align: center;">
         <a href="/linkup.html?room=${roomCode}" style="color: var(--primary); text-decoration: none; font-size: 0.9rem;">Play "LinkUp" Connection Game instead &rarr;</a>
       </div>
@@ -363,8 +378,14 @@ async function joinTeam() {
     joinBtn.style.cursor = "not-allowed";
   }
   
+  const additionalMembers = [
+    document.getElementById('joinMember1')?.value.trim(),
+    document.getElementById('joinMember2')?.value.trim(),
+    document.getElementById('joinMember3')?.value.trim()
+  ].filter(m => m);
+
   try {
-    const res = await apiCall('/api/teams/join', 'POST', { memberName, teamName });
+    const res = await apiCall('/api/teams/join', 'POST', { memberName, teamName, additionalMembers });
     globalState.myTeam = res.team;
     localStorage.setItem('myTeam', JSON.stringify(res.team));
     
